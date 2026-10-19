@@ -36,6 +36,9 @@ ipa=$(realpath -m "$ipa")
 stage=$(mktemp -d)
 mkdir "$stage/Payload"
 cp -a "$app" "$stage/Payload/"
+# SwiftPM build outputs are read-only; rcodesign writes _CodeSignature into
+# every bundle it signs.
+chmod -R u+w "$stage/Payload"
 app=$stage/Payload/$(basename "$app")
 shopt -s nullglob
 for f in "$app"/Frameworks/*.framework "$app"/Frameworks/*.dylib; do

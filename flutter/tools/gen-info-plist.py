@@ -25,11 +25,30 @@ settings = {
     "PRODUCT_BUNDLE_IDENTIFIER": bundle_id,
     "FLUTTER_BUILD_NAME": build_name,
     "FLUTTER_BUILD_NUMBER": build_number,
+    "MARKETING_VERSION": build_name,
+    "CURRENT_PROJECT_VERSION": build_number,
 }
+
+# Apps whose template goes beyond Flutter's own variable set (MARKETING_VERSION
+# is common) define the values as build settings; take them from the Runner
+# project the plist lives in, first value wins as in build.sh's setting().
+pbx = os.path.join(os.path.dirname(os.path.dirname(src)), "Runner.xcodeproj", "project.pbxproj")
+pbx_settings = {}
+if os.path.isfile(pbx):
+    for m in re.finditer(r"^\s*(\w+) = \"?([^\";\n]*?)\"?;", open(pbx).read(), re.M):
+        pbx_settings.setdefault(m.group(1), m.group(2))
+
+def lookup(name):
+    if name in settings:
+        return settings[name]
+    value = pbx_settings.get(name, "")
+    if not value:
+        print(f"warning: no value for $({name}); substituting empty", file=sys.stderr)
+    return value
 
 def expand(value):
     if isinstance(value, str):
-        return re.sub(r"\$\((\w+)\)", lambda m: settings[m.group(1)], value)
+        return re.sub(r"\$\((\w+)\)", lambda m: expand(lookup(m.group(1))), value)
     if isinstance(value, dict):
         return {k: expand(v) for k, v in value.items()}
     if isinstance(value, list):

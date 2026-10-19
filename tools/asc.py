@@ -23,6 +23,7 @@ import urllib.error
 import urllib.request
 import uuid
 import zipfile
+import zlib
 from pathlib import Path
 
 from cryptography import x509
@@ -146,9 +147,21 @@ def stamp(app_dir, build_number):
     for path in Path(app_dir).rglob("*"):
         if path.is_file() and not path.is_symlink() and set_macho_sdk(path, sdk_raw):
             patched += 1
+    # App Store processing also rejects .DS_Store junk anywhere in the bundle and
+    # an alpha channel in the marketing icon (ITMS-90717); Xcode's actool flattens
+    # the icon, the SDK stand-in copies the source PNG through untouched.
+    junk = list(Path(app_dir).rglob(".DS_Store"))
+    for p in junk:
+        p.unlink()
+    flattened = ""
+    icon_name = info.get("CFBundleIcons", {}).get("CFBundlePrimaryIcon", {}).get("CFBundleIconName", "")
+    marketing = Path(app_dir) / f"{icon_name}1024x1024.png"
+    if icon_name and marketing.is_file() and flatten_png_alpha(marketing):
+        flattened = f", flattened {marketing.name}"
     print(f"stamped {info['CFBundleIdentifier']} {info['CFBundleShortVersionString']} ({build_number}), "
           f"{settings['CanonicalName']} {sdk_build}, Xcode {xcode_version} {xcode_build}, "
-          f"Mach-O sdk {settings['Version']} in {patched} file(s)")
+          f"Mach-O sdk {settings['Version']} in {patched} file(s)"
+          f"{', removed ' + str(len(junk)) + ' .DS_Store' if junk else ''}{flattened}")
 
 
 def set_macho_sdk(path, sdk_raw):
@@ -243,6 +256,87 @@ def rename_dylibs(path, renames):
     struct.pack_into("<I", data, 20, len(new))
     data[32:32 + max(len(new), sizeofcmds)] = new.ljust(sizeofcmds, b"\0")
     path.write_bytes(data)
+
+
+def flatten_png_alpha(path):
+    """Rewrite a PNG that carries an alpha channel over a white background, in
+    place. App Store processing rejects alpha in the marketing icon (ITMS-90717);
+    actool on a Mac flattens it, the SDK stand-in copies the source PNG through.
+    Stdlib only: defilter, composite over white, refilter with 0, recompress.
+    True if the file was rewritten."""
+    raw = path.read_bytes()
+    if raw[:8] != b"\x89PNG\r\n\x1a\n":
+        return False
+    chunks, idat, pos = [], b"", 8
+    while pos + 12 <= len(raw):
+        length, = struct.unpack(">I", raw[pos:pos + 4])
+        ctype = raw[pos + 4:pos + 8]
+        body = raw[pos + 8:pos + 8 + length]
+        if ctype == b"IDAT":
+            idat += body
+        elif ctype == b"IEND":
+            break
+        else:
+            chunks.append((ctype, body))
+        pos += 12 + length
+    w, h, depth, color, _, _, interlace = struct.unpack(">2I5B", chunks[0][1])
+    if depth != 8 or color not in (4, 6) or interlace:  # gray/truecolor + alpha, 8-bit
+        return False
+    bpp = 2 if color == 4 else 4
+    stride = w * bpp
+    try:
+        buf = zlib.decompress(idat)
+    except zlib.error:
+        return False
+    if len(buf) != h * (stride + 1):
+        return False
+    rows, prev = [], bytearray(stride)
+    for y in range(h):
+        ft = buf[y * (stride + 1)]
+        if ft > 4:  # invalid per the PNG spec; refuse rather than treat as None
+            return False
+        line = bytearray(buf[y * (stride + 1) + 1:(y + 1) * (stride + 1)])
+        if ft == 1:  # Sub
+            for i in range(bpp, stride):
+                line[i] = (line[i] + line[i - bpp]) & 0xFF
+        elif ft == 2:  # Up
+            for i in range(stride):
+                line[i] = (line[i] + prev[i]) & 0xFF
+        elif ft == 3:  # Average
+            for i in range(stride):
+                left = line[i - bpp] if i >= bpp else 0
+                line[i] = (line[i] + ((left + prev[i]) >> 1)) & 0xFF
+        elif ft == 4:  # Paeth
+            for i in range(stride):
+                a = line[i - bpp] if i >= bpp else 0
+                b, c = prev[i], (prev[i - bpp] if i >= bpp else 0)
+                p = a + b - c
+                pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+                line[i] = (line[i] + (a if pa <= pb and pa <= pc else b if pb <= pc else c)) & 0xFF
+        rows.append(line)
+        prev = line
+    kept = bpp - 1  # samples per pixel without the alpha, which is last
+    out = bytearray()
+    for line in rows:
+        out += b"\x00"
+        for i in range(0, stride, bpp):
+            a = line[i + kept]
+            for j in range(kept):
+                out.append((line[i + j] * a + 255 * (255 - a) + 127) // 255)
+    ihdr = bytearray(chunks[0][1])
+    ihdr[9] = 2 if color == 6 else 0
+    chunks[0] = (b"IHDR", bytes(ihdr))
+    new_idat = zlib.compress(bytes(out), 9)
+    with path.open("wb") as f:
+        f.write(raw[:8])
+        for ctype, body in chunks:
+            f.write(struct.pack(">I", len(body)) + ctype + body
+                    + struct.pack(">I", zlib.crc32(ctype + body) & 0xFFFFFFFF))
+        f.write(struct.pack(">I", len(new_idat)) + b"IDAT" + new_idat
+                + struct.pack(">I", zlib.crc32(b"IDAT" + new_idat) & 0xFFFFFFFF))
+        f.write(struct.pack(">I", 0) + b"IEND"
+                + struct.pack(">I", zlib.crc32(b"IEND") & 0xFFFFFFFF))
+    return True
 
 
 # -- identity ----------------------------------------------------------------

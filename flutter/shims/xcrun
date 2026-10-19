@@ -20,12 +20,13 @@ args=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --sdk | -sdk) sdk=$2; shift 2 ;;
+    --version) echo "xcrun version 71."; exit 0 ;;
     --show-sdk-path) sdk_path "$sdk"; exit 0 ;;
     --show-sdk-version | --show-sdk-platform-version)
       python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["Version"])' "$(sdk_path "$sdk")/SDKSettings.json"
       exit 0 ;;
     --find | -f)
-      case "$2" in clang | clang++ | cc) echo "$here/clang-darwin"; exit 0 ;; esac
+      case "$2" in clang | clang++ | cc) echo "$here/clang-darwin.d/clang"; exit 0 ;; esac
       for c in "$here/$2" "llvm-$2" "$2"; do
         if p=$(command -v "$c"); then echo "$p"; exit 0; fi
       done
@@ -38,7 +39,7 @@ done
 tool=${args[0]}
 rest=("${args[@]:1}")
 case "$tool" in
-  clang | clang++ | cc) exec "$here/clang-darwin" "${rest[@]}" ;;
+  clang | clang++ | cc) exec "$here/clang-darwin.d/clang" "${rest[@]}" ;;
   codesign) exit 0 ;;
   *)
     if [ -x "$here/$tool" ]; then exec "$here/$tool" "${rest[@]}"; fi

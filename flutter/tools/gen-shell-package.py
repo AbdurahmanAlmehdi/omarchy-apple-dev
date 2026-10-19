@@ -95,6 +95,43 @@ for name, pkg, product in plugins:
         shutil.copytree(pkg, dest, symlinks=False, ignore=shutil.ignore_patterns(".build", ".swiftpm"))
     except (shutil.Error, OSError) as error:
         sys.exit(f"{name}: cannot copy {pkg} into the shell package: {error}")
+    # Drop the FlutterFramework dependency from the copied manifest. On a Mac
+    # that product vends the real Flutter.xcframework; here Flutter comes from
+    # the framework search path and -framework flags the build passes to the
+    # whole swift build, and keeping the placeholder static product in the
+    # graph makes SwiftBuild abort with "linked as a static library by ...
+    # and ...": two consumers, one of them a dynamic plugin product. No
+    # plugin source imports the FlutterFramework module, only manifests
+    # reference it. Remove only the dependency itself: whole-expression
+    # .package/.product lines go, a bare "FlutterFramework" array element is
+    # deleted in place (a .target line must survive with an empty array), and
+    # anything else fails closed rather than emitting a broken manifest.
+    manifest_path = os.path.join(dest, "Package.swift")
+    kept_lines = []
+    for line in open(manifest_path).read().split("\n"):
+        if "FlutterFramework" in line:
+            # Remove only the dependency itself, never a whole .target:
+            # 1) a whole single-line .package(...) / .product(...) call,
+            # 2) an inline array element (bracket/comma delimited on the line),
+            # 3) a standalone element line, but only when the previous
+            #    non-empty line shows array context (ends with '[' or ',');
+            #    a split call like '.product(name:\n  "FlutterFramework",'
+            #    has 'name:' above and must fail closed, not silently empty.
+            prev = next((k.strip() for k in reversed(kept_lines) if k.strip()), "")
+            line = re.sub(r'\.(package|product)\([^()]*"FlutterFramework"[^()]*\)\s*,?\s*', "", line)
+            line = re.sub(r'([\[,]\s*)"FlutterFramework"\s*,?(?=\s*[\],])', r"\1", line)
+            standalone = re.match(r'\s*"FlutterFramework"\s*,?\s*$', line)
+            if standalone and (prev.endswith("[") or prev.endswith(",")):
+                line = ""
+            if "FlutterFramework" in line:
+                sys.exit(f"{name}: unsupported FlutterFramework reference in {manifest_path}: {line.strip()}")
+            if line.strip():
+                kept_lines.append(line)
+            elif standalone:
+                kept_lines.append(line)
+        else:
+            kept_lines.append(line)
+    open(manifest_path, "w").write("\n".join(kept_lines))
     local.append((name, dest, product))
 plugins = local
 
