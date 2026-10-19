@@ -44,11 +44,13 @@ breaks `swift build`:
 
 ```
 curl -fLO https://download.swift.org/swift-6.4.0-release/ubuntu2404/swift-6.4.0-RELEASE/swift-6.4.0-RELEASE-ubuntu24.04.tar.gz
-sudo tar -xzf swift-6.4.0-RELEASE-ubuntu24.04.tar.gz -C /usr/local
+sudo tar -xzf swift-6.4.0-RELEASE-ubuntu24.04.tar.gz --strip-components=1 -C /usr/local
 export PATH=/usr/local/usr/bin:$PATH
 ```
 
-(On aarch64 the directory and file name gain `-aarch64`.)
+(On aarch64 the directory and file name gain `-aarch64`. Both tarballs carry a
+top-level `swift-6.4.0-RELEASE-…/` directory; `--strip-components=1` keeps the
+`usr/` level itself, which is what SwiftPM walks up from.)
 
 libimobiledevice: the 24.04 package (1.3.0) is too old to build xtool — it has
 no `idevice_events_subscribe`. Build the current stack from source into a
@@ -78,6 +80,27 @@ apfs-fuse build were verified separately. `overlays.sh` and `flutter-build.sh`
 are plain shell over the same tools and were verified on Arch with the same
 sysroot contents. Receipt with the quoted outputs:
 `receipts/2026-10-09-ubuntu-2404.md`.
+
+## Ubuntu 24.04 (aarch64) — verified on the metal, no Xcode download
+
+Verified 2026-10-19 on an ASUS Ascent GX10 (NVIDIA GB10, 20-core aarch64,
+Ubuntu 24.04.5): `install-toolchain.sh --mode no-xcode` end to end (xtool from
+source, the rcodesign/ipsw aarch64 release binaries, the pymobiledevice3 venv,
+the sysroot cut from the public iPhone16,2 iOS 27.0.1 IPSW, the Swift standard
+library and overlays), then `flutter/setup.sh`, then
+`sdk-free/flutter-build.sh` on the sample app (`path_provider`,
+`shared_preferences`, `sqlite3`, `url_launcher`): an unsigned `Runner.ipa` in
+43 s. Notes beyond the x86_64 list above:
+
+- `flutter/setup.sh` works unmodified on an aarch64 host: gclient's DEPS hooks
+  fetch linux-arm64 prebuilt clang/gn/ninja, the patch applies cleanly, and
+  `gen_snapshot` links in about a minute on a 20-core machine.
+- Debian/Ubuntu fuse3 headers refuse to preprocess `fuse3/fuse.h` without
+  `-DFUSE_USE_VERSION>=30`, which made the apfs-fuse prerequisite probe a
+  false negative (#68); the probe passes the define now.
+- Plugins whose pubspec has no `pluginClass:` (pure-Dart or native-assets
+  implementations, e.g. `path_provider_foundation` 2.6.0) are skipped by the
+  plugin scan instead of aborting the build (#68).
 
 ## NixOS (x86_64): reported by the flake author, no receipt here
 

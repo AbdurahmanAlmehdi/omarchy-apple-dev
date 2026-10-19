@@ -56,7 +56,7 @@ DEPS=$APP/.flutter-plugins-dependencies
 if [ -f "$DEPS" ] && [ -n "$SWIFTC" ] && [ -f "$SDKFREE_HOME/swift/res/iphoneos/Foundation.swiftmodule/arm64-apple-ios.swiftmodule" ]; then
   while IFS='|' read -r name path; do
     [ -n "${name:-}" ] && [ -d "${path:-}" ] || continue
-    cls=$(grep -m1 "pluginClass:" "$path/pubspec.yaml" 2>/dev/null | awk '{print $2}')
+    cls=$(grep -m1 "pluginClass:" "$path/pubspec.yaml" 2>/dev/null | awk '{print $2}' || true)
     [ -n "$cls" ] || continue
     if [ -n "$(find "$path" -name '*.swift' -not -name 'Package.swift' -not -path '*example*' -not -path '*Tests*' -not -path '*test*' -print -quit)" ]; then kind=swift; else kind=objc; fi
     PLUGINS+=("$kind|$name|$path|$cls")

@@ -131,7 +131,7 @@ elif [ ! -f "$tbd/UIKit.tbd" ]; then
         fuse=$SDKFREE_HOME/bin/apfs-fuse
         # ipsw mounts the iOS update's system image with apfs-fuse to pull the cache out.
         if ! command -v cmake >/dev/null 2>&1 || ! command -v git >/dev/null 2>&1 || ! command -v cc >/dev/null 2>&1 ||
-          ! echo '#include <fuse3/fuse.h>' | cc -E - >/dev/null 2>&1; then
+          ! echo '#include <fuse3/fuse.h>' | cc -DFUSE_USE_VERSION=32 -E - >/dev/null 2>&1; then
           echo "apfs-fuse is missing and cannot be built: install the fuse3 headers, cmake, a C/C++ compiler, bzip2 and zlib (docs/DISTROS.md lists the package names per distribution)" >&2
           exit 1
         fi
