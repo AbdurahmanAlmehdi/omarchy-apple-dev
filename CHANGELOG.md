@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Leaving frameworks out of a Flutter build
+
+- `flutter/build.sh` reads `STRIP_FRAMEWORKS`, frameworks to leave out of the app (names without `.framework`, separated by spaces or commas). On a Mac this is an archive strip and an `xcodebuild -exportArchive`; here signing comes later, so `flutter/tools/strip-frameworks.py` removes the directories before `Runner.ipa` is zipped.
+- The tool reads the load commands of every image left in the app, thin or fat, and refuses a framework that is still loaded through a non-weak `LC_LOAD_DYLIB`, `LC_REEXPORT_DYLIB` or `LC_LOAD_UPWARD_DYLIB`, naming the loader: dyld would stop the app at launch. A weak load is allowed, and a name that is not in the app is skipped. `tests/test_strip_frameworks.py` covers it with synthetic Mach-O images and three mutants.
+
 ### Offline Assets.car check before any upload
 
 - `tools/car_check.py` checks every `Assets.car` in an `.ipa`: the app, nested `*.bundle` directories, extensions and frameworks. It refuses a car with no renditions. It reads the BOM structure, compares each BITMAPKEYS descriptor with the value Apple derives from the asset's renditions, and compares the TVL row stride with the decoded size of each pixel chunk. It uses only the Python standard library.

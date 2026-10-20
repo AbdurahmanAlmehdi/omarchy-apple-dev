@@ -8,6 +8,7 @@
 #
 # Env overrides: FLUTTER, BUNDLE_ID, BUILD_NAME, BUILD_NUMBER, MIN_IOS
 # (defaults come from the app's Xcode project and pubspec.yaml).
+# STRIP_FRAMEWORKS="A B" leaves A.framework and B.framework out of the app.
 set -euo pipefail
 
 install=
@@ -152,6 +153,13 @@ for _ in $(seq 1 64); do  # ponytail: fixed 64-iteration cap; products are finit
 done
 cp "$app/ios/Flutter/AppFrameworkInfo.plist" "$bundle/"
 printf 'APPL????' >"$bundle/PkgInfo"
+# STRIP_FRAMEWORKS names frameworks to leave out (without .framework, separated
+# by spaces or commas), as a Mac build strips the archive and exports it again.
+# The script refuses one that the rest of the app still loads.
+if [ -n "${STRIP_FRAMEWORKS:-}" ]; then
+  IFS=', ' read -r -a strip_names <<<"$STRIP_FRAMEWORKS"
+  python3 "$here/tools/strip-frameworks.py" "$bundle" "${strip_names[@]}"
+fi
 rm -f "$out/Runner.ipa"
 (cd "$out" && zip -qry Runner.ipa Payload)
 echo "Built $out/Runner.ipa ($BUNDLE_ID $BUILD_NAME+$BUILD_NUMBER, iOS $MIN_IOS+)"
