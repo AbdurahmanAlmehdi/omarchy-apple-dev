@@ -345,6 +345,20 @@ ASC_KEY_PATH=/path/to/AuthKey_XXXXXXXXXX.p8 ASC_ISSUER_ID=<issuer-uuid> ASC_KEY_
   ~/omarchy-apple-dev/ship.sh --upload
 ```
 
+To sign the way an existing Xcode setup does, set `ASC_EXPORT_OPTIONS` to its
+`ExportOptions.plist` (the file `xcodebuild -exportArchive` and `flutter build
+ipa --export-options-plist` take). `method` must be `app-store-connect` (or
+the older `app-store`); any other method, or none, which Xcode reads as
+`development`, stops signing. `teamID` must be the profiles' team, and
+`signingCertificate` must name a distribution certificate or be the SHA-1 of
+the local one. `provisioningProfiles` maps a bundle id to an existing App Store
+profile by name or UUID, used instead of the one `asc.py` makes. That profile
+must list the local Apple Distribution certificate, because rcodesign signs
+with the local private key; signing stops and says so when it does not. Keys
+that only steer Xcode's export (`uploadSymbols`, `signingStyle`,
+`destination`, ...) are reported and ignored. `tests/test_export_options.py`
+covers these rules offline.
+
 With the key set, `ship.sh` registers the bundle id. It creates an Apple
 Distribution certificate (the private key stays in
 `~/.config/omarchy-apple-dev/distribution/`) and an App Store profile. It

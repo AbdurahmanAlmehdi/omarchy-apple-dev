@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Xcode export options for signing
+
+- `ASC_EXPORT_OPTIONS` points `asc.py identity` (so `ship.sh`, `sdk-free/ship.sh` and any script that calls it) at an Xcode `ExportOptions.plist`. `method` must be `app-store-connect` or `app-store`; another method, or none (Xcode's default is `development`), stops signing before any App Store Connect call. `teamID` is checked against each profile's team. `signingCertificate` must name a distribution certificate or be the local certificate's SHA-1.
+- `provisioningProfiles` (bundle id to profile name or UUID) picks existing active App Store profiles instead of the ones `asc.py` creates. A picked profile must be for the bundle id, wildcards included, and must list the local Apple Distribution certificate, since rcodesign signs with the local key. Keys that only steer Xcode's export are reported and ignored. `test-identity` checks the method only.
+- `tests/test_export_options.py` covers the rules and the identity flow offline, with three mutants.
+
 ### Offline Assets.car check before any upload
 
 - `tools/car_check.py` checks every `Assets.car` in an `.ipa`: the app, nested `*.bundle` directories, extensions and frameworks. It refuses a car with no renditions. It reads the BOM structure, compares each BITMAPKEYS descriptor with the value Apple derives from the asset's renditions, and compares the TVL row stride with the decoded size of each pixel chunk. It uses only the Python standard library.

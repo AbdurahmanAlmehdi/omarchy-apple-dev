@@ -5,6 +5,7 @@ Runs with the pymobiledevice3 venv's python, which already has `cryptography`.
 API key: ASC_KEY_ID, ASC_ISSUER_ID, and ASC_KEY_PATH (default
 ~/.appstoreconnect/AuthKey_<ASC_KEY_ID>.p8). The key needs the App Manager role
 with access to Certificates, Identifiers & Profiles, or Admin.
+ASC_EXPORT_OPTIONS: an Xcode ExportOptions.plist for `identity` (see export_options()).
 """
 import base64
 import datetime
@@ -433,21 +434,126 @@ def ensure_app_groups(identifiers):
     return attached
 
 
+# -- export options ----------------------------------------------------------
+
+APP_STORE_METHODS = ("app-store-connect", "app-store")  # Xcode 15.3 renamed app-store
+DISTRIBUTION_CERTIFICATES = ("Apple Distribution", "iOS Distribution")
+EXPORT_KEYS = {"method", "teamID", "provisioningProfiles", "signingCertificate"}
+
+
+def export_options():
+    """What asc.py takes from the Xcode ExportOptions.plist in ASC_EXPORT_OPTIONS ({} when unset):
+    the method must be an App Store one, teamID and signingCertificate are checked against the
+    identity, and provisioningProfiles (bundle id -> profile name or UUID) picks existing profiles.
+    Keys about Xcode's own export (uploadSymbols, signingStyle, destination, ...) are reported as
+    ignored."""
+    path = os.environ.get("ASC_EXPORT_OPTIONS")
+    if not path:
+        return {}
+    with Path(path).open("rb") as f:
+        opts = plistlib.load(f)
+    if not isinstance(opts, dict):
+        die("ASC_EXPORT_OPTIONS must contain an export options dictionary")
+    # xcodebuild -exportArchive defaults to development when the plist names no method.
+    method = opts.get("method", "development")
+    if method not in APP_STORE_METHODS:
+        die(f"export method '{method}' is not supported: asc.py signs for App Store distribution only "
+            "(method app-store-connect); for development use tools/provision-dev.py and tools/sign-dev.sh")
+    team = opts.get("teamID")
+    if team is not None and not (isinstance(team, str) and re.fullmatch(r"[A-Z0-9]{10}", team)):
+        die(f"export options teamID '{team}' is not a 10-character team id")
+    profiles = opts.get("provisioningProfiles", {})
+    if not (isinstance(profiles, dict) and all(isinstance(k, str) and isinstance(v, str) and v
+                                               for k, v in profiles.items())):
+        die("export options provisioningProfiles must map bundle ids to profile names or UUIDs")
+    certificate_name = opts.get("signingCertificate")
+    if certificate_name is not None and not isinstance(certificate_name, str):
+        die("export options signingCertificate must be a string")
+    ignored = sorted(set(opts) - EXPORT_KEYS)
+    if ignored:
+        print(f"export options: ignored {', '.join(ignored)} (Xcode export settings)")
+    return {"team": team, "profiles": profiles, "certificate": certificate_name}
+
+
+def check_signing_certificate(wanted, cert_der):
+    """ExportOptions signingCertificate is a certificate kind ("Apple Distribution", optionally with
+    ": Name (TEAM)") or a SHA-1 fingerprint; the local identity must be that certificate."""
+    if not wanted:
+        return
+    if re.fullmatch(r"[0-9A-Fa-f]{40}", wanted):
+        if hashlib.sha1(cert_der).hexdigest().upper() != wanted.upper():
+            die(f"export options signingCertificate {wanted} is not the local Apple Distribution "
+                "certificate; its private key is not on this machine")
+    elif not any(wanted == kind or wanted.startswith(kind + ":") for kind in DISTRIBUTION_CERTIFICATES):
+        die(f"export options signingCertificate '{wanted}' is not a distribution certificate")
+
+
+def select_profile(listed, wanted, ident):
+    """The active App Store profile among `listed` (App Store Connect profiles) whose name or UUID
+    is `wanted`."""
+    found = [p for p in listed if wanted in (p["attributes"].get("name"), p["attributes"].get("uuid"))]
+    if not found:
+        die(f"no active App Store profile named or with UUID '{wanted}' "
+            f"(export options provisioningProfiles for {ident})")
+    return base64.b64decode(found[0]["attributes"]["profileContent"])
+
+
+def check_named_profile(payload, wanted, ident, cert_der):
+    """A profile picked by the export options must be for this bundle id and list the local
+    certificate: rcodesign signs with the local key, and a profile made for another certificate
+    makes the signature invalid."""
+    app_id = payload.get("Entitlements", {}).get("application-identifier", "")
+    pattern = app_id.split(".", 1)[1] if "." in app_id else ""
+    if not (pattern == ident or (pattern.endswith("*") and ident.startswith(pattern[:-1]))):
+        die(f"profile '{wanted}' is for {app_id or 'no app id'}, not {ident}")
+    if cert_der not in payload.get("DeveloperCertificates", []):
+        die(f"profile '{wanted}' does not list the local Apple Distribution certificate; add it to the "
+            "profile in Apple Developer, or drop the provisioningProfiles entry so asc.py makes its own")
+
+
+def check_profile_team(payload, team, ident):
+    if team and payload.get("TeamIdentifier", [None])[0] != team:
+        die(f"profile for {ident} is in team {payload.get('TeamIdentifier', ['?'])[0]}, "
+            f"export options teamID is {team}")
+
+
 def identity(app_dir, out_dir):
     """Apple identity via the API: register each bundle id, write embedded.mobileprovision into the
     app and every PlugIns/*.appex, and write per-bundle entitlements and the signing key/cert into
-    out_dir."""
+    out_dir. ASC_EXPORT_OPTIONS (an Xcode ExportOptions.plist) is honoured as export_options()
+    says."""
+    opts = export_options()
     cert_id, key_path, cert_path = certificate()
+    cert_der = cert_path.read_bytes()
+    check_signing_certificate(opts.get("certificate"), cert_der)
     idents = [ident for _, ident in bundles(app_dir)]
     attached = ensure_app_groups(idents)
-    prov_for = lambda ident, c=attached, ci=cert_id: profile(
-        ident, ci, force_create=(ident in c))
+    named = opts.get("profiles", {})
+    listed = None
+
+    def prov_for(ident):
+        nonlocal listed
+        if ident in named:
+            if listed is None:
+                listed = call("GET", "/v1/profiles?filter[profileType]=IOS_APP_STORE"
+                                     "&filter[profileState]=ACTIVE&limit=200")["data"]
+            prov = select_profile(listed, named[ident], ident)
+            check_named_profile(profile_payload(prov), named[ident], ident, cert_der)
+        else:
+            prov = profile(ident, cert_id, force_create=(ident in attached))
+        check_profile_team(profile_payload(prov), opts.get("team"), ident)
+        return prov
     install_all_bundles(app_dir, out_dir, prov_for, key_path, cert_path)
 
 
 def test_identity(app_dir, out_dir):
     """A local stand-in with the same shape as an Apple Distribution identity and App Store profile,
-    signed by a self-made certificate. It exercises signing and validation; Apple rejects it."""
+    signed by a self-made certificate. It exercises signing and validation; Apple rejects it.
+    ASC_EXPORT_OPTIONS is checked (an unsupported method fails as it would with the real
+    identity); its team, certificate and profiles do not apply to the TEST identity."""
+    if export_options():
+        print("export options: teamID, signingCertificate and provisioningProfiles are not applied "
+              "to the TEST identity")
     team = TEST_TEAM
     key_path, cert_path = TEST_IDENTITY_DIR / "key.pem", TEST_IDENTITY_DIR / "cert.der"
     now = datetime.datetime.now(datetime.timezone.utc)
