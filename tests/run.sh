@@ -43,6 +43,9 @@ bash tests/device-run-console/run.sh || fail=1
 echo "== tests/ips-symbolicate/run.sh"
 bash tests/ips-symbolicate/run.sh || fail=1
 
+echo "== tests/flutter-dsyms/run.sh"
+bash tests/flutter-dsyms/run.sh || fail=1
+
 echo "== tests/device-run-symbolicate/run.sh"
 bash tests/device-run-symbolicate/run.sh || fail=1
 
