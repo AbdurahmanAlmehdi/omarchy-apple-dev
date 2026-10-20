@@ -10,6 +10,8 @@
 # Env overrides: FLUTTER, BUNDLE_ID, BUILD_NAME, BUILD_NUMBER, MIN_IOS
 # (defaults come from the app's Xcode project and pubspec.yaml).
 # STRIP_FRAMEWORKS="A B" leaves A.framework and B.framework out of the app.
+# SPLIT_DEBUG_INFO=<dir> and DART_OBFUSCATION=true do what `flutter build
+# --split-debug-info` and `--obfuscate` do.
 set -euo pipefail
 
 install=
@@ -51,6 +53,24 @@ families=$(setting TARGETED_DEVICE_FAMILY); families=${families:-1,2}
 version=$(sed -n 's/^version: *//p' "$app/pubspec.yaml" | head -n1)
 BUILD_NAME=${BUILD_NAME:-${version%%+*}}
 BUILD_NUMBER=${BUILD_NUMBER:-$([ "${version#*+}" != "$version" ] && echo "${version#*+}" || echo 1)}
+# Dart symbols, as `flutter build --split-debug-info=<dir> --obfuscate` passes
+# them to the Xcode build: gen_snapshot writes app.ios-arm64.symbols into the
+# directory (for `flutter symbolize`), and obfuscation needs that directory.
+# A relative directory is taken from where build.sh runs, as flutter's is.
+dart_opts=()
+split_dir=
+if [ -n "${SPLIT_DEBUG_INFO:-}" ]; then
+  split_dir=$(realpath -m "$SPLIT_DEBUG_INFO")
+  dart_opts+=("-dSplitDebugInfo=$split_dir")
+fi
+case ${DART_OBFUSCATION:-false} in
+  true)
+    [ -n "$split_dir" ] ||
+      { echo "DART_OBFUSCATION=true needs SPLIT_DEBUG_INFO, as --obfuscate needs --split-debug-info" >&2; exit 1; }
+    dart_opts+=(-dDartObfuscation=true) ;;
+  false) ;;
+  *) echo "DART_OBFUSCATION must be true or false, not '$DART_OBFUSCATION'" >&2; exit 1 ;;
+esac
 sdk_version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["Version"])' "$ios_sdk/SDKSettings.json")
 
 out=$app/build/ios-linux
@@ -73,6 +93,7 @@ for d in "$@"; do defines+="${defines:+,}$(printf '%s' "$d" | base64 -w0)"; done
 (cd "$app" && "$FLUTTER" pub get >/dev/null && "$FLUTTER" assemble --no-version-check --output="$asm" \
   -dTargetPlatform=ios -dTargetFile=lib/main.dart -dBuildMode=release -dIosArchs=arm64 \
   -dSdkRoot="$ios_sdk" -dTrackWidgetCreation=false -dTreeShakeIcons=true -dCodesignIdentity=- \
+  "${dart_opts[@]+"${dart_opts[@]}"}" \
   ${defines:+--DartDefines="$defines"} release_ios_bundle_flutter_assets) >"$out/assemble.log" 2>&1 ||
   { tail -n 40 "$out/assemble.log" >&2; exit 1; }
 
@@ -209,6 +230,7 @@ echo "dSYMs: $(find "$dsyms" -mindepth 1 -maxdepth 1 -name '*.dSYM' | wc -l) in 
 if [ "${#dsym_missing[@]}" -gt 0 ]; then
   echo "warning: no dSYM for ${dsym_missing[*]} (see $out/dsymutil.log)" >&2
 fi
+if [ -n "$split_dir" ]; then echo "Dart symbols in $split_dir"; fi
 echo "Built $out/Runner.ipa ($BUNDLE_ID $BUILD_NAME+$BUILD_NUMBER, iOS $MIN_IOS+)"
 
 if [ -n "$install" ]; then
