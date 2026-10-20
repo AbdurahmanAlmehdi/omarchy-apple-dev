@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Dart split debug info and obfuscation in Flutter builds
+
+- `flutter/build.sh` reads `SPLIT_DEBUG_INFO=<dir>` and `DART_OBFUSCATION=true`, the `flutter build --split-debug-info` and `--obfuscate` options. They reach `flutter assemble` as the `-dSplitDebugInfo` and `-dDartObfuscation` defines that Flutter's `xcode_backend.dart` passes on a Mac. `app.ios-arm64.symbols` lands in the directory for `flutter symbolize`. Obfuscation without a symbols directory stops the build, as in `flutter build`.
+- `tests/flutter-dart-symbols/run.sh` checks the defines with the option block extracted from `build.sh`, with three mutants. Not yet run in a full build.
+
 ### Offline Assets.car check before any upload
 
 - `tools/car_check.py` checks every `Assets.car` in an `.ipa`: the app, nested `*.bundle` directories, extensions and frameworks. It refuses a car with no renditions. It reads the BOM structure, compares each BITMAPKEYS descriptor with the value Apple derives from the asset's renditions, and compares the TVL row stride with the decoded size of each pixel chunk. It uses only the Python standard library.
