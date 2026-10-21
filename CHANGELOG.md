@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Dart split debug info and obfuscation in Flutter builds
+
+- `flutter/build.sh` reads `SPLIT_DEBUG_INFO=<dir>` and `DART_OBFUSCATION=true`, the `flutter build --split-debug-info` and `--obfuscate` options. They reach `flutter assemble` as the `-dSplitDebugInfo` and `-dDartObfuscation` defines that Flutter's `xcode_backend.dart` passes on a Mac. `app.ios-arm64.symbols` lands in the directory for `flutter symbolize`. Obfuscation without a symbols directory stops the build, as in `flutter build`.
+- `tests/flutter-dart-symbols/run.sh` checks the defines with the option block extracted from `build.sh`, with three mutants. Not yet run in a full build.
+
 ### App Store signing for Flutter builds
 
 - `flutter/ship.sh [--upload] <app>` takes the bundle `flutter/build.sh` left in `build/ios-linux/Payload` and runs the App Store steps on a copy: `asc.py stamp` with the build's own `CFBundleVersion` (or `BUILD_NUMBER`), `asc.py frameworks`, the Apple Distribution identity and App Store profile, team-prefix fill, rcodesign inside-out, `asc.py validate` and, with `--upload`, `asc.py upload`. It writes `build/ios-linux/Runner-store.ipa`. The built bundle is not changed.

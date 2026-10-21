@@ -32,6 +32,14 @@ is `<app>/build/ios-linux/Runner.ipa`, unsigned, for `xtool install` or
 app's `ios/Runner.xcodeproj` and `pubspec.yaml`; `BUNDLE_ID`, `MIN_IOS`,
 `BUILD_NAME` and `BUILD_NUMBER` override them.
 
+`SPLIT_DEBUG_INFO=<dir>` and `DART_OBFUSCATION=true` are `flutter build
+--split-debug-info=<dir>` and `--obfuscate`: they reach `flutter assemble` as
+the same `-dSplitDebugInfo` and `-dDartObfuscation` defines Xcode's build
+phase passes, so the Dart snapshot is built with `--dwarf-stack-traces` and
+`app.ios-arm64.symbols` lands in the directory for `flutter symbolize`. A
+relative directory is taken from where `build.sh` runs. Obfuscation without
+`SPLIT_DEBUG_INFO` stops the build, as it does in `flutter build`.
+
 `ship.sh` takes the bundle `build.sh` left in `build/ios-linux/Payload` and
 runs the App Store steps of the top-level `ship.sh` on a copy of it: `asc.py
 stamp` (the version `build.sh` wrote is kept unless `BUILD_NUMBER` is set),
