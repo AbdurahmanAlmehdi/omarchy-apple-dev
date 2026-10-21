@@ -122,15 +122,74 @@ calls some tools by fixed path (`/usr/bin/touch`). xtool, pymobiledevice3 and
 ipsw are on `PATH` there, not in `~/.local/bin`. `install-toolchain.sh` is not
 used: Nix builds every piece it installs.
 
-## Fedora — untested
+## Fedora 44 (x86_64) — SwiftUI iPhone deployment verified (two-stage workaround)
 
-Not tested. swift.org publishes no Fedora toolchain; the nearest builds are
-ubi9/ubi10, which need the ncurses compatibility shim
-(`install-toolchain.sh --curses-compat`). Package names differ from Debian
-(`dnf install gcc-c++ git libcurl-devel libedit-devel libxml2-devel
-libzstd-devel zlib-devel pkgconf unzip zip rsync file llvm cmake
-libfuse3-devel libimobiledevice-devel poppler-utils heif-lib`); treat this as
-a starting point, not a recipe.
+Community report, **2026-10-20**: On Fedora 44 x86_64, the `--mode full`
+installer completed with **Swift 6.4.1** from the official UBI 9 tarball and
+**Xcode 27.1**. A native SwiftUI counter was **built, signed, installed over
+USB, launched and interacted with on a physical iPhone 15 Pro**. This used
+**newer upstream xtool** for authentication and deployment, not the pinned
+installer binary; LLDB and modified-source redeployment remain unverified.
+
+Install Fedora's dependencies first (consolidated working list, not a proven
+minimal set):
+
+```sh
+sudo dnf install \
+  binutils bzip2-devel ca-certificates cmake curl file \
+  gcc-c++ git gnupg2 libstdc++-devel \
+  fuse3-devel libcurl-devel libedit-devel \
+  libheif libheif-devel libheif-tools \
+  libimobiledevice-devel libimobiledevice-utils \
+  libxml2-devel libzstd-devel ncurses-libs \
+  openssl-devel pkgconf-pkg-config poppler-utils \
+  python3 python3-devel python3-pip \
+  rsync unzip usbmuxd xz-devel z3-devel zip zlib-devel llvm
+```
+
+Use the official [Swift UBI 9 Linux release](https://www.swift.org/install/linux/ubi/9/)
+(6.4.1 for this test); preserve the tarball's `usr/` hierarchy and prepend
+`<swift-root>/usr/bin` to `PATH`. Obtain the matching Xcode `.xip` from Apple.
+Then run the installer:
+
+```sh
+git clone https://github.com/joshuaswarren/omarchy-apple-dev.git
+cd omarchy-apple-dev
+env XCODE_XIP="$HOME/apple-dev/Xcode_27.1.xip" ./install-toolchain.sh --mode full
+```
+
+Fedora-specific gotchas: `fuse3-devel` (not `libfuse3-devel`), `xz-devel`
+(`lzma.h`), `gcc-c++` / `libstdc++-devel` (C++ headers), `python3-devel`
+(`Python.h` for the `pylzss` build), and `libheif-tools` (`heif-convert`).
+The `No pacman` message is expected. No manual ncurses compatibility shim
+was required for **installation on this host**, but LLDB still reported a
+missing `libpython3.9.so.1.0` and was not tested.
+
+**Current deployment workaround:** the installer pins a patched xtool at
+`f0a1f90efdbb0dc023e276ff529da92618da7a87`; it compiled SwiftUI but
+Apple ID authentication failed with `-80045`. Upstream xtool's newer `aa6ba75e7df759a84560885a86822dd119da8c55`
+authenticated successfully after a separate source build:
+
+```sh
+mkdir -p "$HOME/src"
+git clone https://github.com/xtool-org/xtool.git "$HOME/src/xtool-main"
+cd "$HOME/src/xtool-main"
+git checkout --detach aa6ba75e7df759a84560885a86822dd119da8c55
+swift run -c release xtool auth
+"$HOME/src/xtool-main/.build/release/xtool" sdk install "$HOME/apple-dev/Xcode_27.1.xip" # full, NOT --slim
+```
+
+The upstream tool rejected the installer's old slim-style Darwin SDK until a
+full SDK was installed. Its login was separate from the installed fork; if
+necessary authenticate again using the same upstream executable. Add a unique
+`bundleID` to the Swift package's `xtool.yml`, then run the upstream binary's
+`dev` subcommand with the iPhone connected. An initial 409 device provisioning
+error disappeared on retry after an explicit bundle ID was added; **the reason
+for that success is unconfirmed**.
+
+See [`receipts/2026-10-20-fedora-44.md`](../receipts/2026-10-20-fedora-44.md)
+for the exact dependency/setup commands, observed warnings, successful
+provisioning/signing/install log, and outstanding limitations.
 
 ## Arch-based distributions
 
