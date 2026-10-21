@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Leaving frameworks out of a Flutter build
+
+- `flutter/build.sh` reads `STRIP_FRAMEWORKS`, frameworks to leave out of the app (names without `.framework`, separated by spaces or commas). On a Mac this is an archive strip and an `xcodebuild -exportArchive`; here signing comes later, so `flutter/tools/strip-frameworks.py` removes the directories before `Runner.ipa` is zipped.
+- The tool reads the load commands of every image left in the app, thin or fat, and refuses a framework that is still loaded through a non-weak `LC_LOAD_DYLIB`, `LC_REEXPORT_DYLIB` or `LC_LOAD_UPWARD_DYLIB`, naming the loader: dyld would stop the app at launch. A weak load is allowed, and a name that is not in the app is skipped. `tests/test_strip_frameworks.py` covers it with synthetic Mach-O images and three mutants.
+- An empty field in `STRIP_FRAMEWORKS` (`A,,B`, `A B,`) is dropped instead of passed on: the tool refuses an empty name, so a trailing separator stopped the build. `tests/test_strip_frameworks.py` runs the parsing block from `build.sh` in bash to hold that.
+
 ### dSYMs for Flutter builds
 
 - `flutter/build.sh` step 5 writes `build/ios-linux/dSYMs`, one dSYM per Mach-O image in the app, as an Xcode archive does: `App.framework` from `flutter assemble`, `Flutter.framework` from assemble's output or the engine's `Flutter.xcframework`, native assets from their build, Runner and the SwiftPM frameworks and dylibs from SwiftBuild's own dSYM or `dsymutil` on the unstripped product. Before, Runner was stripped and no dSYM was kept, so crashes in native code could not be symbolicated.
