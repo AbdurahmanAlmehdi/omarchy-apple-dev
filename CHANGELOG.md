@@ -7,6 +7,11 @@
 - `flutter/build.sh` reads `SPLIT_DEBUG_INFO=<dir>` and `DART_OBFUSCATION=true`, the `flutter build --split-debug-info` and `--obfuscate` options. They reach `flutter assemble` as the `-dSplitDebugInfo` and `-dDartObfuscation` defines that Flutter's `xcode_backend.dart` passes on a Mac. `app.ios-arm64.symbols` lands in the directory for `flutter symbolize`. Obfuscation without a symbols directory stops the build, as in `flutter build`.
 - `tests/flutter-dart-symbols/run.sh` checks the defines with the option block extracted from `build.sh`, with three mutants. Not yet run in a full build.
 
+### App Store signing for Flutter builds
+
+- `flutter/ship.sh [--upload] <app>` takes the bundle `flutter/build.sh` left in `build/ios-linux/Payload` and runs the App Store steps on a copy: `asc.py stamp` with the build's own `CFBundleVersion` (or `BUILD_NUMBER`), `asc.py frameworks`, the Apple Distribution identity and App Store profile, team-prefix fill, rcodesign inside-out, `asc.py validate` and, with `--upload`, `asc.py upload`. It writes `build/ios-linux/Runner-store.ipa`. The built bundle is not changed.
+- `tests/flutter-ship/run.sh` checks the order of the steps, their arguments, the untouched build, a read-only build and a bad team id, with stubbed python and rcodesign. No upload from this script has a receipt yet.
+
 ### Offline Assets.car check before any upload
 
 - `tools/car_check.py` checks every `Assets.car` in an `.ipa`: the app, nested `*.bundle` directories, extensions and frameworks. It refuses a car with no renditions. It reads the BOM structure, compares each BITMAPKEYS descriptor with the value Apple derives from the asset's renditions, and compares the TVL row stride with the decoded size of each pixel chunk. It uses only the Python standard library.

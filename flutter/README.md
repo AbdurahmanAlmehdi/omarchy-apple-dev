@@ -17,6 +17,7 @@ aarch64 hosts are untested.
 sudo pacman -S --needed llvm      # llvm-strip, llvm-lipo, llvm-otool, llvm-install-name-tool, llvm-ar
 flutter/setup.sh                  # once per Flutter version (7 GB, 12 min here)
 flutter/build.sh --install /path/to/flutter/app [KEY=VALUE ...]
+flutter/ship.sh [--upload] /path/to/flutter/app   # App Store signing, validation, upload
 ```
 
 The `llvm` package is the one dependency `install-toolchain.sh` does not
@@ -38,6 +39,19 @@ phase passes, so the Dart snapshot is built with `--dwarf-stack-traces` and
 `app.ios-arm64.symbols` lands in the directory for `flutter symbolize`. A
 relative directory is taken from where `build.sh` runs. Obfuscation without
 `SPLIT_DEBUG_INFO` stops the build, as it does in `flutter build`.
+
+`ship.sh` takes the bundle `build.sh` left in `build/ios-linux/Payload` and
+runs the App Store steps of the top-level `ship.sh` on a copy of it: `asc.py
+stamp` (the version `build.sh` wrote is kept unless `BUILD_NUMBER` is set),
+`asc.py frameworks`, the Apple Distribution identity and App Store profile,
+rcodesign inside-out, then `asc.py validate` on
+`build/ios-linux/Runner-store.ipa`. With `--upload` it uploads through the
+App Store Connect build-upload API. It needs the same `ASC_KEY_ID`,
+`ASC_ISSUER_ID` and `ASC_KEY_PATH` as `ship.sh --upload` and the app record
+created once in App Store Connect; without `ASC_KEY_ID` it signs with the
+TEST identity, which Apple rejects. `ASC_ENTITLEMENTS_PATH` requests push,
+Sign in with Apple and Associated Domains as for `ship.sh`.
+`tests/flutter-ship/run.sh` checks the steps with stubbed tools.
 
 A clean build of the stock template with four plugins takes 47 s on a 2018
 laptop (i7-8650U).
@@ -92,7 +106,8 @@ laptop (i7-8650U).
   CocoaPods-only plugin stops the build with its name.
 - A storyboard edited beyond Flutter's template may use something the Linux
   ibtool does not compile yet; it stops with an `error:` line naming it.
-- Not tried: App Store upload of a Flutter app, app extensions, entitlements
-  beyond the defaults, simulator builds.
+- Not tried: an App Store upload with `ship.sh` from this directory (the
+  steps are the ones `sdk-free/ship.sh` takes to TestFlight; no receipt yet),
+  app extensions, entitlements beyond the defaults, simulator builds.
 - A Flutter upgrade needs `flutter/setup.sh` again: the snapshot format is
   tied to the exact Dart revision.
