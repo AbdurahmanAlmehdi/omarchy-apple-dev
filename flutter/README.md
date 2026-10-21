@@ -32,6 +32,15 @@ is `<app>/build/ios-linux/Runner.ipa`, unsigned, for `xtool install` or
 app's `ios/Runner.xcodeproj` and `pubspec.yaml`; `BUNDLE_ID`, `MIN_IOS`,
 `BUILD_NAME` and `BUILD_NUMBER` override them.
 
+`build/ios-linux/dSYMs` holds a dSYM for each Mach-O image in the app, as
+an Xcode archive's `dSYMs` folder does, for Crashlytics, Sentry or App Store
+Connect symbolication: `App.framework` from `flutter assemble`,
+`Flutter.framework` from the engine artifacts, native assets from their
+build, and Runner and the SwiftPM frameworks from SwiftBuild or `dsymutil` on
+the unstripped products. A prebuilt binary with no debug map (a binary
+target such as an `.xcframework`) gets none; the build names it in a warning
+and goes on. `dsymutil` output is in `build/ios-linux/dsymutil.log`.
+
 `ship.sh` takes the bundle `build.sh` left in `build/ios-linux/Payload` and
 runs the App Store steps of the top-level `ship.sh` on a copy of it: `asc.py
 stamp` (the version `build.sh` wrote is kept unless `BUILD_NUMBER` is set),
