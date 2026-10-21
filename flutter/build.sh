@@ -4,7 +4,8 @@
 #   flutter/build.sh [--install] <flutter app dir> [KEY=VALUE dart-define ...]
 #
 # Output: <app dir>/build/ios-linux/Runner.ipa (unsigned; `xtool install`
-# signs it). Release mode, arm64. Run flutter/setup.sh once first.
+# signs it) and build/ios-linux/dSYMs. Release mode, arm64. Run
+# flutter/setup.sh once first.
 #
 # Env overrides: FLUTTER, BUNDLE_ID, BUILD_NAME, BUILD_NUMBER, MIN_IOS
 # (defaults come from the app's Xcode project and pubspec.yaml).
@@ -154,6 +155,49 @@ cp "$app/ios/Flutter/AppFrameworkInfo.plist" "$bundle/"
 printf 'APPL????' >"$bundle/PkgInfo"
 rm -f "$out/Runner.ipa"
 (cd "$out" && zip -qry Runner.ipa Payload)
+
+echo "== 5. Debug symbols"
+# One dSYM per Mach-O image in the app, as an Xcode archive's dSYMs folder, for
+# crash symbolication (Crashlytics, Sentry, App Store Connect). App.framework's
+# comes from flutter assemble (dsymutil after gen_snapshot), Flutter.framework's
+# from the engine artifacts, a native asset's from its build. Runner and the
+# SwiftPM products get SwiftBuild's dSYM when it wrote one, else dsymutil on
+# the unstripped product: its debug map points at the objects in .build. The
+# bundle's copies keep the products' UUIDs (strip, stamp and signing do not
+# change LC_UUID), so each dSYM matches its image.
+dsyms=$out/dSYMs
+# Copies of SwiftPM outputs can be read-only, which would stop the next rm.
+[ ! -d "$dsyms" ] || chmod -R u+w "$dsyms"
+rm -rf "$dsyms"; mkdir -p "$dsyms"
+: >"$out/dsymutil.log"
+engine_dsym=$flutter_root/bin/cache/artifacts/engine/ios-release/Flutter.xcframework/ios-arm64/dSYMs/Flutter.framework.dSYM
+dsym_missing=()
+add_dsym() { # <image name, e.g. Runner.app or Foo.framework> <unstripped binary or empty>
+  local name=$1 binary=$2 src
+  for src in "$asm/$name.dSYM" "$asm/native_assets/$name.dSYM" "$products/${name%.app}.dSYM"; do
+    if [ -d "$src" ]; then cp -R "$src" "$dsyms/$name.dSYM"; return; fi
+  done
+  if [ "$name" = Flutter.framework ] && [ -d "$engine_dsym" ]; then cp -R "$engine_dsym" "$dsyms/"; return; fi
+  # dsymutil succeeds on a binary without a debug map (a prebuilt one) but
+  # leaves no DWARF file: that counts as missing.
+  if [ -n "$binary" ] && [ -f "$binary" ] &&
+     dsymutil "$binary" -o "$dsyms/$name.dSYM" >>"$out/dsymutil.log" 2>&1 &&
+     [ -n "$(find "$dsyms/$name.dSYM/Contents/Resources/DWARF" -type f 2>/dev/null)" ]; then return; fi
+  rm -rf "$dsyms/$name.dSYM"
+  dsym_missing+=("$name")
+}
+add_dsym Runner.app "$products/Runner"
+for f in "$bundle"/Frameworks/*; do
+  name=$(basename "$f")
+  case $name in
+    *.framework) add_dsym "$name" "$products/$name/${name%.framework}" ;;
+    *.dylib) add_dsym "$name" "$products/$name" ;;
+  esac
+done
+echo "dSYMs: $(find "$dsyms" -mindepth 1 -maxdepth 1 -name '*.dSYM' | wc -l) in $dsyms"
+if [ "${#dsym_missing[@]}" -gt 0 ]; then
+  echo "warning: no dSYM for ${dsym_missing[*]} (see $out/dsymutil.log)" >&2
+fi
 echo "Built $out/Runner.ipa ($BUNDLE_ID $BUILD_NAME+$BUILD_NUMBER, iOS $MIN_IOS+)"
 
 if [ -n "$install" ]; then

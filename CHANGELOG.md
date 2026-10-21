@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### dSYMs for Flutter builds
+
+- `flutter/build.sh` step 5 writes `build/ios-linux/dSYMs`, one dSYM per Mach-O image in the app, as an Xcode archive does: `App.framework` from `flutter assemble`, `Flutter.framework` from assemble's output or the engine's `Flutter.xcframework`, native assets from their build, Runner and the SwiftPM frameworks and dylibs from SwiftBuild's own dSYM or `dsymutil` on the unstripped product. Before, Runner was stripped and no dSYM was kept, so crashes in native code could not be symbolicated.
+- An image with no debug map gets no dSYM and a warning that names it; the build still succeeds. `tests/flutter-dsyms/run.sh` runs the step extracted from `build.sh` on synthetic trees with a stub `dsymutil`, with three mutants. Not yet run in a full build.
+
 ### App Store signing for Flutter builds
 
 - `flutter/ship.sh [--upload] <app>` takes the bundle `flutter/build.sh` left in `build/ios-linux/Payload` and runs the App Store steps on a copy: `asc.py stamp` with the build's own `CFBundleVersion` (or `BUILD_NUMBER`), `asc.py frameworks`, the Apple Distribution identity and App Store profile, team-prefix fill, rcodesign inside-out, `asc.py validate` and, with `--upload`, `asc.py upload`. It writes `build/ios-linux/Runner-store.ipa`. The built bundle is not changed.
