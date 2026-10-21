@@ -37,6 +37,9 @@ bash tests/install-venv/run.sh || fail=1
 echo "== tests/ship-root-resources/run.sh"
 bash tests/ship-root-resources/run.sh || fail=1
 
+echo "== tests/flutter-ship/run.sh"
+bash tests/flutter-ship/run.sh || fail=1
+
 echo "== tests/device-run-console/run.sh"
 bash tests/device-run-console/run.sh || fail=1
 
