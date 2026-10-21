@@ -32,6 +32,16 @@ is `<app>/build/ios-linux/Runner.ipa`, unsigned, for `xtool install` or
 app's `ios/Runner.xcodeproj` and `pubspec.yaml`; `BUNDLE_ID`, `MIN_IOS`,
 `BUILD_NAME` and `BUILD_NUMBER` override them.
 
+`STRIP_FRAMEWORKS="Name Other"` leaves `Name.framework` and
+`Other.framework` out of the app (names without `.framework`, separated by
+spaces or commas): the step a Mac build does with an archive strip and an
+`xcodebuild -exportArchive`. Here the app is signed afterwards, so
+`tools/strip-frameworks.py` only removes the directories. It refuses a
+framework that the rest of the app still loads (a non-weak `LC_LOAD_DYLIB`,
+`LC_REEXPORT_DYLIB` or `LC_LOAD_UPWARD_DYLIB`), since dyld would stop the
+app at launch, and it names the image that loads it. A name that is not in
+the app is reported and skipped.
+
 `ship.sh` takes the bundle `build.sh` left in `build/ios-linux/Payload` and
 runs the App Store steps of the top-level `ship.sh` on a copy of it: `asc.py
 stamp` (the version `build.sh` wrote is kept unless `BUILD_NUMBER` is set),
