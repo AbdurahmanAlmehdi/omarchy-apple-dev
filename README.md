@@ -46,6 +46,10 @@ flutter/build.sh counter                  # 29 s for the counter template
 # see GETTING-STARTED.md), then install:
 tools/provision-dev.py --bundle-id dev.omarchy.flutterdemo.counter
 tools/sign-dev.sh counter/build/ios-linux/Payload/Runner.app Runner-dev.ipa
+
+# Or sign it for the App Store, validate offline, and upload (same variables as
+# ship.sh --upload below):
+flutter/ship.sh --upload counter          # -> counter/build/ios-linux/Runner-store.ipa
 ```
 
 On a free Apple ID you can skip the signing step. Run
