@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## v0.4.1
+
+### xtool 1.23.0 and the password login error
+
+- The installer pins xtool 1.23.0 plus our ten fixes (`joshuaswarren/xtool`, branch `omarchy/1.23.0-fixes`, commit `f300489`). `xtool auth` in password mode no longer fails with `-80045` (issue #78). With a made-up Apple ID the old pin answered `-80045` and the new pin answers `-20970`. The installer was not re-run from scratch on Arch for this change.
 
 ### Dart split debug info and obfuscation in Flutter builds
 
