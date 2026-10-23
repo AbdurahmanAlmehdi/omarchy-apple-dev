@@ -103,13 +103,15 @@ fetch_commit() { # repo sha dir
   fi
 }
 
-# xtool 1.20.1 plus fixes not released yet (xtool-org/xtool#290-#293, #295, #302): branch-pinned
-# dependencies, `type: .dynamic` package products, extension dylibs kept in the host app
-# (FINDINGS.md 24.1, 27.3, 30), and real source paths for SourceKit-LSP (FINDINGS.md 55).
+# xtool 1.23.0 plus fixes not released yet (xtool-org/xtool#290-#293, #295, #302, all still open
+# upstream): branch-pinned dependencies, `type: .dynamic` package products, extension dylibs kept
+# in the host app (FINDINGS.md 24.1, 27.3, 30), and real source paths for SourceKit-LSP
+# (FINDINGS.md 55). 1.22.2 and later carry xtool-org/xtool#337: before it, `xtool auth` in
+# password mode failed with -80045 because the client info did not match the claimed Mac.
 # Built from source with its Swift runtime libraries next to it
 # ($ORIGIN only), so a toolchain swap or upgrade cannot break it.
 XTOOL_REPO=https://github.com/joshuaswarren/xtool
-XTOOL_SHA=f0a1f90efdbb0dc023e276ff529da92618da7a87
+XTOOL_SHA=f300489f3a3fddbd9fb598ba6cf69eb24a494527
 install_xtool() {
   local src="$HOME/.cache/omarchy-apple-dev/xtool-$XTOOL_SHA"
   local dest="$HOME/.local/lib/omarchy-apple-dev/xtool-$XTOOL_SHA"

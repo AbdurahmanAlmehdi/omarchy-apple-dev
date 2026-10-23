@@ -14,10 +14,19 @@ install script as a fresh user (FINDINGS.md item 22).
 | Tool | Version | Source |
 |------|---------|--------|
 | Swift | 6.4.0 | AUR `swift-bin` |
-| xtool | 1.20.1 + 4 fixes (xtool-org/xtool#290-#293) | built from source by the installer |
+| xtool | 1.23.0 + 10 commits (xtool-org/xtool#290-#293, #295, #302, still open upstream) | built from source by the installer |
 | pymobiledevice3 | latest from PyPI at install time | venv |
 | LLDB | 21.0.0 (Swift toolchain) | bundled with `swift-bin` |
 | iOS SDK | iPhoneOS 27.0 | Xcode 27.0 (full mode); in no-Xcode mode, link stubs cut from Apple's public iOS update |
+
+The xtool row changed on 2026-10-23, after the rest of the table was verified
+(on 1.20.1). xtool 1.22.2 and later fix `xtool auth` in password mode failing
+with -80045 (xtool-org/xtool#329, fixed by #337). The 1.23.0 pin builds with
+Swift 6.4.0 on x86_64 Debian 12 (libimobiledevice 1.4.0 built from source), and
+`xtool auth` with a made-up Apple ID now ends in "Your account information was
+entered incorrectly. (-20970)". The SDK build, device install and LLDB loop have
+not been re-run on 1.23.0, and the installer has not been re-run as a fresh Arch
+user on it.
 
 The device install and the LLDB loop were proven on 2026-09-09 on an M1. That
 run used Swift 6.3.3, xtool 1.19.0 and the iOS 26.5 SDK. It has not been re-run
