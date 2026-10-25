@@ -90,6 +90,21 @@ class GenInfoPlistXcconfigTest(unittest.TestCase):
         info, _ = self.run_tool({"Release.xcconfig": "A = plain\nA[sdk=iphoneos*] = conditional\n"}, {"A": "$(A)"})
         self.assertEqual(info["A"], "plain")
 
+    def test_include_cycle_spelled_differently(self):
+        info, _ = self.run_tool(
+            {"Release.xcconfig": '#include "./Other.xcconfig"\nA = release\n',
+             "Other.xcconfig": '#include "./Release.xcconfig"\nB = other\n'},
+            {"A": "$(A)", "B": "$(B)"})
+        self.assertEqual((info["A"], info["B"]), ("release", "other"))
+
+    def test_same_file_included_twice_is_read_twice(self):
+        # Only the include stack is guarded: a later #include of the same file still assigns again.
+        info, _ = self.run_tool(
+            {"Release.xcconfig": '#include "A.xcconfig"\nA = middle\n#include "./A.xcconfig"\n',
+             "A.xcconfig": "A = from-a\n"},
+            {"A": "$(A)"})
+        self.assertEqual(info["A"], "from-a")
+
     def test_include_cycle_and_unknown_variable(self):
         info, err = self.run_tool(
             {"Release.xcconfig": '#include "Other.xcconfig"\n', "Other.xcconfig": '#include "Release.xcconfig"\n'},

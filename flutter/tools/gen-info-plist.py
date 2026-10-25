@@ -46,6 +46,7 @@ if os.path.isfile(pbx):
 xcconfig_settings = {}
 
 def read_xcconfig(path, seen=()):
+    path = os.path.realpath(path)  # `./A.xcconfig`, `A.xcconfig` and a symlink to it are one file
     if path in seen or not os.path.isfile(path):
         return
     for line in open(path, errors="replace"):
