@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Signing with a given identity and profile
+
+- `flutter/ship.sh` signs with an Apple Distribution identity and an App Store profile it is given when `ASC_PROFILE` is set, with `ASC_SIGNING_KEY` (the PEM private key) and `ASC_SIGNING_CERT` (its certificate, DER). The new `asc.py given-identity` makes no App Store Connect call and creates no certificate, so a build machine needs neither the API key nor a certificate of its own; before, `asc.py identity` made one per machine, and a team with three machines hit Apple's limit of distribution certificates. The profile must be for the app's bundle id, in the export options' team, and list the certificate, and the key must be the certificate's. An app with extensions is refused, since each extension needs a profile of its own. `ASC_PROFILE` wins over `ASC_KEY_ID`; `--upload` still needs the API key.
+- `tests/test_given_identity.py` covers the rules offline, with three mutants (a real key pair check runs when `cryptography` is installed); `tests/flutter-ship/run.sh` row 8 checks that `ship.sh` picks it. Not yet run in a full build.
+
 ### Info.plist values from the app's own xcconfig
 
 - `flutter/tools/gen-info-plist.py` expands `$(VAR)`s an app defines in an xcconfig that `ios/Flutter/Release.xcconfig` includes, such as the Google Sign-In client id and its reversed URL scheme. Before, they had no value and became empty strings, so `GIDClientID` and the URL scheme were blank and Google sign-in failed at run time. As in Xcode, `//` starts a comment and `$()` is empty (so `https:/$()/host` writes a URL), a later assignment wins, a missing `#include?` file is skipped, an include cycle is cut by file (so `./A.xcconfig` and a symlink count as `A.xcconfig`), a file included again later is read again, `$(inherited)` is dropped, and a build setting in the project overrides the xcconfig, even when it is empty. A setting that refers to itself (`A = $(A)`, or `A = $(B)` with `B = $(A)`) becomes empty with a warning; before, it stopped the tool with a `RecursionError`. An xcconfig that is not UTF-8 is read with replacement characters instead of stopping the tool. Conditional settings (`KEY[sdk=iphoneos*] = …`) are skipped; `flutter/README.md` lists this under Limits.
