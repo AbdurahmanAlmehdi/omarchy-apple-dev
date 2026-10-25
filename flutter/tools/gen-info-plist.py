@@ -38,21 +38,50 @@ if os.path.isfile(pbx):
     for m in re.finditer(r"^\s*(\w+) = \"?([^\";\n]*?)\"?;", open(pbx).read(), re.M):
         pbx_settings.setdefault(m.group(1), m.group(2))
 
+# Settings an app keeps in its own xcconfig (a Google client id, say) reach the
+# plist through Flutter/Release.xcconfig and the files it #includes. As in Xcode,
+# `//` starts a comment (so `https:/$()/host` writes a URL: `$()` is empty), a later
+# assignment wins, `#include?` may be missing, and the project's build settings
+# override the xcconfig's. Conditional settings (`A[sdk=iphoneos*] = x`) are skipped.
+xcconfig_settings = {}
+
+def read_xcconfig(path, seen=()):
+    path = os.path.realpath(path)  # `./A.xcconfig`, `A.xcconfig` and a symlink to it are one file
+    if path in seen or not os.path.isfile(path):
+        return
+    for line in open(path, errors="replace"):
+        line = line.split("//", 1)[0].strip()
+        inc = re.match(r'#include\??\s+"([^"]+)"', line)
+        if inc:
+            read_xcconfig(os.path.join(os.path.dirname(path), inc.group(1)), seen + (path,))
+            continue
+        m = re.match(r"(\w+)\s*=\s*(.*)", line)
+        if m:
+            xcconfig_settings[m.group(1)] = m.group(2).replace("$(inherited)", "").replace("$()", "").strip()
+
+read_xcconfig(os.path.join(os.path.dirname(os.path.dirname(src)), "Flutter", "Release.xcconfig"))
+
 def lookup(name):
     if name in settings:
         return settings[name]
-    value = pbx_settings.get(name, "")
+    value = pbx_settings[name] if name in pbx_settings else xcconfig_settings.get(name, "")
     if not value:
         print(f"warning: no value for $({name}); substituting empty", file=sys.stderr)
     return value
 
-def expand(value):
+def expand(value, resolving=()):
     if isinstance(value, str):
-        return re.sub(r"\$\((\w+)\)", lambda m: expand(lookup(m.group(1))), value)
+        def setting(m):
+            name = m.group(1)
+            if name in resolving:  # A = $(A), or A = $(B) and B = $(A): Xcode refuses these
+                print(f"warning: $({name}) refers to itself; substituting empty", file=sys.stderr)
+                return ""
+            return expand(lookup(name), resolving + (name,))
+        return re.sub(r"\$\((\w+)\)", setting, value)
     if isinstance(value, dict):
-        return {k: expand(v) for k, v in value.items()}
+        return {k: expand(v, resolving) for k, v in value.items()}
     if isinstance(value, list):
-        return [expand(v) for v in value]
+        return [expand(v, resolving) for v in value]
     return value
 
 info = expand(plistlib.load(open(src, "rb")))

@@ -105,7 +105,7 @@ laptop (i7-8650U).
 | Runner and plugins | Xcode project plus Swift packages | `tools/gen-shell-package.py` writes one SwiftPM package from `.flutter-plugins-dependencies`; SwiftBuild compiles it against `Flutter.framework`. |
 | Icons | `actool` | This repo's Linux `actool`. |
 | Storyboards | `ibtool` | This repo's Linux `ibtool`. Flutter's two template storyboards compile byte-identical to Xcode's (FINDINGS.md item 65). |
-| `Info.plist` | Xcode | `tools/gen-info-plist.py`. |
+| `Info.plist` | Xcode | `tools/gen-info-plist.py`. It expands Flutter's own `$(VAR)`s, the project's build settings and the settings in `Flutter/Release.xcconfig` and the files it includes. |
 
 ## Things that would otherwise bite
 
@@ -132,5 +132,7 @@ laptop (i7-8650U).
 - Not tried: an App Store upload with `ship.sh` from this directory (the
   steps are the ones `sdk-free/ship.sh` takes to TestFlight; no receipt yet),
   app extensions, entitlements beyond the defaults, simulator builds.
+- `Info.plist` values from an xcconfig ignore conditional settings
+  (`KEY[sdk=iphoneos*] = …`); the unconditional value is used.
 - A Flutter upgrade needs `flutter/setup.sh` again: the snapshot format is
   tied to the exact Dart revision.
