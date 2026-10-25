@@ -119,7 +119,9 @@ XTOOL_SDK_VERSION="epoch=4,darwinTools=1.1.0,oam=1.4.1"
 install_xtool() {
   local src="$HOME/.cache/omarchy-apple-dev/xtool-$XTOOL_SHA"
   local dest="$HOME/.local/lib/omarchy-apple-dev/xtool-$XTOOL_SHA"
-  if [ ! -x "$dest/xtool" ]; then
+  # The runtime libraries are copied after xtool, so a run that stopped between the two
+  # left xtool alone; checking libswiftCore.so too makes the next run finish the install.
+  if [ ! -x "$dest/xtool" ] || [ ! -e "$dest/libswiftCore.so" ]; then
     fetch_commit "$XTOOL_REPO" "$XTOOL_SHA" "$src"
     echo "Building xtool $XTOOL_SHA (first run: about 7 minutes)"
     (cd "$src" && swift build -c release --product xtool -Xswiftc -no-toolchain-stdlib-rpath >/dev/null)

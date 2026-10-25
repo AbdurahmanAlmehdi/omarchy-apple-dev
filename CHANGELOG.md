@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### xtool installs again on a fresh machine
+
+- `install-toolchain.sh` step 3 stopped with `install: cannot stat '…/libXADI.so'`. The xtool 1.23.0 pin (`f300489`, v0.4.1) no longer has XADI: xtool replaced it with Omnisette ("gsa: use macOS Omnisette", #380). The installer now copies `xtool` alone, then its Swift runtime libraries as before.
+- A run that stopped there had already copied `xtool`, so the next run skipped the step and `xtool` failed with `libswiftCore.so: cannot open shared object file`. Step 3 now also rebuilds when `libswiftCore.so` is missing next to `xtool`, which repairs those installs without removing anything by hand.
+- Checked on a fresh x86_64 Arch EC2 instance (Swift 6.4.1 from AUR `swift-bin`): a full install to the SDK step, and a re-run with only `xtool` left in the install directory.
+
 ## v0.4.2
 
 ### A stale Darwin SDK is rebuilt, not skipped
