@@ -127,7 +127,7 @@ install_xtool() {
     bin=$(cd "$src" && swift build -c release --show-bin-path)
     runtime="$(dirname "$(dirname "$(readlink -f "$(command -v swift)")")")/lib/swift/linux"
     mkdir -p "$dest"
-    install -m755 "$bin/xtool" "$bin/libXADI.so" "$dest/"
+    install -m755 "$bin/xtool" "$dest/"
     LD_LIBRARY_PATH="$runtime" ldd "$dest/xtool" | awk -v rt="$runtime/" 'index($3, rt) == 1 { print $3 }' |
       xargs -r install -m644 -t "$dest"
   fi
