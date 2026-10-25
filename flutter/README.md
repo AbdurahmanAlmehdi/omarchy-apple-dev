@@ -132,5 +132,7 @@ laptop (i7-8650U).
 - Not tried: an App Store upload with `ship.sh` from this directory (the
   steps are the ones `sdk-free/ship.sh` takes to TestFlight; no receipt yet),
   app extensions, entitlements beyond the defaults, simulator builds.
+- `Info.plist` values from an xcconfig ignore conditional settings
+  (`KEY[sdk=iphoneos*] = …`); the unconditional value is used.
 - A Flutter upgrade needs `flutter/setup.sh` again: the snapshot format is
   tied to the exact Dart revision.

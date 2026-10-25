@@ -40,14 +40,15 @@ if os.path.isfile(pbx):
 
 # Settings an app keeps in its own xcconfig (a Google client id, say) reach the
 # plist through Flutter/Release.xcconfig and the files it #includes. As in Xcode,
-# `//` starts a comment, a later assignment wins, `#include?` may be missing, and
-# the project's build settings override the xcconfig's.
+# `//` starts a comment (so `https:/$()/host` writes a URL: `$()` is empty), a later
+# assignment wins, `#include?` may be missing, and the project's build settings
+# override the xcconfig's. Conditional settings (`A[sdk=iphoneos*] = x`) are skipped.
 xcconfig_settings = {}
 
 def read_xcconfig(path, seen=()):
     if path in seen or not os.path.isfile(path):
         return
-    for line in open(path):
+    for line in open(path, errors="replace"):
         line = line.split("//", 1)[0].strip()
         inc = re.match(r'#include\??\s+"([^"]+)"', line)
         if inc:
@@ -55,7 +56,7 @@ def read_xcconfig(path, seen=()):
             continue
         m = re.match(r"(\w+)\s*=\s*(.*)", line)
         if m:
-            xcconfig_settings[m.group(1)] = m.group(2).replace("$(inherited)", "").strip()
+            xcconfig_settings[m.group(1)] = m.group(2).replace("$(inherited)", "").replace("$()", "").strip()
 
 read_xcconfig(os.path.join(os.path.dirname(os.path.dirname(src)), "Flutter", "Release.xcconfig"))
 

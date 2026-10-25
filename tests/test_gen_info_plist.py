@@ -17,7 +17,8 @@ class GenInfoPlistXcconfigTest(unittest.TestCase):
             ios = Path(tmp) / "ios"
             for name, text in xcconfigs.items():
                 (ios / "Flutter").mkdir(parents=True, exist_ok=True)
-                (ios / "Flutter" / name).write_text(text)
+                target = ios / "Flutter" / name
+                target.write_bytes(text) if isinstance(text, bytes) else target.write_text(text)
             (ios / "Runner").mkdir(parents=True, exist_ok=True)
             (ios / "Runner.xcodeproj").mkdir()
             (ios / "Runner.xcodeproj/project.pbxproj").write_text(pbx)
@@ -70,6 +71,24 @@ class GenInfoPlistXcconfigTest(unittest.TestCase):
         self.assertEqual((info["A"], info["B"]), ("x", ""))
         self.assertIn("$(A) refers to itself", err)
         self.assertIn("$(B) refers to itself", err)
+
+    def test_empty_reference_writes_a_url(self):
+        info, _ = self.run_tool({"Release.xcconfig": "API = https:/$()/api.example.com/v1 // the API\n"},
+                                {"API": "$(API)"})
+        self.assertEqual(info["API"], "https://api.example.com/v1")
+
+    def test_self_reference_in_its_own_value(self):
+        info, err = self.run_tool({"Release.xcconfig": "A = $(A) x\n"}, {"A": "$(A)"})
+        self.assertEqual(info["A"].strip(), "x")
+        self.assertIn("$(A) refers to itself", err)
+
+    def test_file_that_is_not_utf8(self):
+        info, _ = self.run_tool({"Release.xcconfig": b"// caf\xe9\nA = ok\n"}, {"A": "$(A)"})
+        self.assertEqual(info["A"], "ok")
+
+    def test_conditional_setting_is_skipped(self):
+        info, _ = self.run_tool({"Release.xcconfig": "A = plain\nA[sdk=iphoneos*] = conditional\n"}, {"A": "$(A)"})
+        self.assertEqual(info["A"], "plain")
 
     def test_include_cycle_and_unknown_variable(self):
         info, err = self.run_tool(
