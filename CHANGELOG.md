@@ -7,6 +7,12 @@
 - `flutter/tools/gen-info-plist.py` expands `$(VAR)`s an app defines in an xcconfig that `ios/Flutter/Release.xcconfig` includes, such as the Google Sign-In client id and its reversed URL scheme. Before, they had no value and became empty strings, so `GIDClientID` and the URL scheme were blank and Google sign-in failed at run time. As in Xcode, `//` starts a comment and `$()` is empty (so `https:/$()/host` writes a URL), a later assignment wins, a missing `#include?` file is skipped, an include cycle is cut by file (so `./A.xcconfig` and a symlink count as `A.xcconfig`), a file included again later is read again, `$(inherited)` is dropped, and a build setting in the project overrides the xcconfig, even when it is empty. A setting that refers to itself (`A = $(A)`, or `A = $(B)` with `B = $(A)`) becomes empty with a warning; before, it stopped the tool with a `RecursionError`. An xcconfig that is not UTF-8 is read with replacement characters instead of stopping the tool. Conditional settings (`KEY[sdk=iphoneos*] = …`) are skipped; `flutter/README.md` lists this under Limits.
 - `tests/test_gen_info_plist.py` covers includes, comments, precedence (including an empty project setting), an include cycle, value cycles, `$()`, a Latin-1 file and a conditional setting. Checked in a full build on x86_64 Arch: a real app's Google Sign-In ids came out filled in, the build reached VALID in App Store Connect, and sign-in worked from TestFlight.
 
+### xtool installs again on a fresh machine
+
+- `install-toolchain.sh` step 3 stopped with `install: cannot stat '…/libXADI.so'`. The xtool 1.23.0 pin (`f300489`, v0.4.1) no longer has XADI: xtool replaced it with Omnisette ("gsa: use macOS Omnisette", #380). The installer now copies `xtool` alone, then its Swift runtime libraries as before.
+- A run that stopped there had already copied `xtool`, so the next run skipped the step and `xtool` failed with `libswiftCore.so: cannot open shared object file`. Step 3 now also rebuilds when `libswiftCore.so` is missing next to `xtool`, which repairs those installs without removing anything by hand.
+- Checked on a fresh x86_64 Arch EC2 instance (Swift 6.4.1 from AUR `swift-bin`): a full install to the SDK step, and a re-run with only `xtool` left in the install directory.
+
 ## v0.4.2
 
 ### A stale Darwin SDK is rebuilt, not skipped
