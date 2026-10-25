@@ -38,10 +38,31 @@ if os.path.isfile(pbx):
     for m in re.finditer(r"^\s*(\w+) = \"?([^\";\n]*?)\"?;", open(pbx).read(), re.M):
         pbx_settings.setdefault(m.group(1), m.group(2))
 
+# Settings an app keeps in its own xcconfig (a Google client id, say) reach the
+# plist through Flutter/Release.xcconfig and the files it #includes. As in Xcode,
+# `//` starts a comment, a later assignment wins, `#include?` may be missing, and
+# the project's build settings override the xcconfig's.
+xcconfig_settings = {}
+
+def read_xcconfig(path, seen=()):
+    if path in seen or not os.path.isfile(path):
+        return
+    for line in open(path):
+        line = line.split("//", 1)[0].strip()
+        inc = re.match(r'#include\??\s+"([^"]+)"', line)
+        if inc:
+            read_xcconfig(os.path.join(os.path.dirname(path), inc.group(1)), seen + (path,))
+            continue
+        m = re.match(r"(\w+)\s*=\s*(.*)", line)
+        if m:
+            xcconfig_settings[m.group(1)] = m.group(2).replace("$(inherited)", "").strip()
+
+read_xcconfig(os.path.join(os.path.dirname(os.path.dirname(src)), "Flutter", "Release.xcconfig"))
+
 def lookup(name):
     if name in settings:
         return settings[name]
-    value = pbx_settings.get(name, "")
+    value = pbx_settings.get(name) or xcconfig_settings.get(name, "")
     if not value:
         print(f"warning: no value for $({name}); substituting empty", file=sys.stderr)
     return value

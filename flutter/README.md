@@ -105,7 +105,7 @@ laptop (i7-8650U).
 | Runner and plugins | Xcode project plus Swift packages | `tools/gen-shell-package.py` writes one SwiftPM package from `.flutter-plugins-dependencies`; SwiftBuild compiles it against `Flutter.framework`. |
 | Icons | `actool` | This repo's Linux `actool`. |
 | Storyboards | `ibtool` | This repo's Linux `ibtool`. Flutter's two template storyboards compile byte-identical to Xcode's (FINDINGS.md item 65). |
-| `Info.plist` | Xcode | `tools/gen-info-plist.py`. |
+| `Info.plist` | Xcode | `tools/gen-info-plist.py`. It expands Flutter's own `$(VAR)`s, the project's build settings and the settings in `Flutter/Release.xcconfig` and the files it includes. |
 
 ## Things that would otherwise bite
 

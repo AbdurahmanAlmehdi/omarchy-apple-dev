@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Info.plist values from the app's own xcconfig
+
+- `flutter/tools/gen-info-plist.py` expands `$(VAR)`s an app defines in an xcconfig that `ios/Flutter/Release.xcconfig` includes, such as the Google Sign-In client id and its reversed URL scheme. Before, they had no value and became empty strings, so `GIDClientID` and the URL scheme were blank and Google sign-in failed at run time. As in Xcode, `//` starts a comment, a later assignment wins, a missing `#include?` file is skipped, `$(inherited)` is dropped, and a build setting in the project overrides the xcconfig.
+- `tests/test_gen_info_plist.py` covers includes, comments, precedence and an include cycle. Checked against a real app's `Info.plist` (FinTrak) on macOS; not yet run in a full Linux build.
+
 ## v0.4.2
 
 ### A stale Darwin SDK is rebuilt, not skipped
