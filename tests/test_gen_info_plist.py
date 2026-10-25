@@ -60,6 +60,17 @@ class GenInfoPlistXcconfigTest(unittest.TestCase):
             pbx="\t\t\t\tC = project;\n")
         self.assertEqual((info["A"], info["B"], info["C"]), ("second", "from-xcconfig", "project"))
 
+    def test_empty_project_setting_still_wins(self):
+        info, _ = self.run_tool({"Release.xcconfig": "C = xc\n"}, {"C": "$(C)"}, pbx='\t\t\t\tC = "";\n')
+        self.assertEqual(info["C"], "")
+
+    def test_self_reference_is_cut(self):
+        info, err = self.run_tool({"Release.xcconfig": "A = x$(A)\nB = $(C)\nC = $(B)\n"},
+                                  {"A": "$(A)", "B": "$(B)"})
+        self.assertEqual((info["A"], info["B"]), ("x", ""))
+        self.assertIn("$(A) refers to itself", err)
+        self.assertIn("$(B) refers to itself", err)
+
     def test_include_cycle_and_unknown_variable(self):
         info, err = self.run_tool(
             {"Release.xcconfig": '#include "Other.xcconfig"\n', "Other.xcconfig": '#include "Release.xcconfig"\n'},

@@ -62,18 +62,24 @@ read_xcconfig(os.path.join(os.path.dirname(os.path.dirname(src)), "Flutter", "Re
 def lookup(name):
     if name in settings:
         return settings[name]
-    value = pbx_settings.get(name) or xcconfig_settings.get(name, "")
+    value = pbx_settings[name] if name in pbx_settings else xcconfig_settings.get(name, "")
     if not value:
         print(f"warning: no value for $({name}); substituting empty", file=sys.stderr)
     return value
 
-def expand(value):
+def expand(value, resolving=()):
     if isinstance(value, str):
-        return re.sub(r"\$\((\w+)\)", lambda m: expand(lookup(m.group(1))), value)
+        def setting(m):
+            name = m.group(1)
+            if name in resolving:  # A = $(A), or A = $(B) and B = $(A): Xcode refuses these
+                print(f"warning: $({name}) refers to itself; substituting empty", file=sys.stderr)
+                return ""
+            return expand(lookup(name), resolving + (name,))
+        return re.sub(r"\$\((\w+)\)", setting, value)
     if isinstance(value, dict):
-        return {k: expand(v) for k, v in value.items()}
+        return {k: expand(v, resolving) for k, v in value.items()}
     if isinstance(value, list):
-        return [expand(v) for v in value]
+        return [expand(v, resolving) for v in value]
     return value
 
 info = expand(plistlib.load(open(src, "rb")))
