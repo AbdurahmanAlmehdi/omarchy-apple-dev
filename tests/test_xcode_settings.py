@@ -10,10 +10,21 @@ Rows (expected results written before the code):
   4  configuration Debug -> the Debug settings; "release" matches Release, as Flutter matches
   5  a configuration the target lacks -> exit 1, listing Debug, Release, Profile
   6  $(VAR)s expand from any level, including the configuration's xcconfig
+--flavor, on tests/flutter-configuration/flavors (Flutter 3.47.6's matching):
+  7  dev -> Release-dev, scheme dev; its settings: bundle id .dev, devAppIcon,
+     FLUTTER_TARGET lib/main_dev.dart, display name from its xcconfig
+  8  prod -> scheme Prod (the flavor in sentence case), Release-Prod
+  9  STAGING -> scheme staging (ignoring case), "Release staging" (the one name with both)
+  10 qa -> exit 1: Release-qa-a and Release-qa-b both match
+  11 nocfg -> exit 1, no Release configuration; missing -> exit 1, lists the schemes
+  12 the stock template (no schemes but Runner) with dev -> exit 1, lists Runner
 Mutants (each must fail its row; checked by hand when the test was written):
   M1  look the levels up lowest first (drop reversed) -> row 2
   M2  leave $(inherited) as written -> row 3
   M3  always read Release (config_layers without the name) -> row 4
+  M4  drop the fuzzy configuration match -> row 9
+  M5  take the first of several configurations -> row 10
+  M6  print FLAVOR instead of the scheme -> row 8
 """
 import re
 import subprocess
@@ -23,7 +34,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from flutter_fixture import (DEBUG_XCCONFIG, PROJECT_RELEASE, STOCK, TARGET_DEBUG,  # noqa: E402
+from flutter_fixture import (DEBUG_XCCONFIG, FLAVORS, PROJECT_RELEASE, STOCK, TARGET_DEBUG,  # noqa: E402
                              TARGET_RELEASE, stock_ios)
 
 TOOL = Path(__file__).resolve().parents[1] / "flutter/tools/xcode_settings.py"
@@ -37,7 +48,7 @@ def old_setting(pbx, name):
     return ""
 
 
-class XcodeSettingsTest(unittest.TestCase):
+class SettingsCase(unittest.TestCase):
     def run_tool(self, ios, configuration, *names):
         return subprocess.run([sys.executable, str(TOOL), str(ios), configuration, *names],
                               capture_output=True, text=True)
@@ -46,6 +57,9 @@ class XcodeSettingsTest(unittest.TestCase):
         proc = self.run_tool(ios, configuration, *names)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         return proc.stdout.splitlines()
+
+
+class XcodeSettingsTest(SettingsCase):
 
     def test_row1_stock_template_as_before(self):
         names = ["PRODUCT_BUNDLE_IDENTIFIER", "IPHONEOS_DEPLOYMENT_TARGET", "TARGETED_DEVICE_FAMILY"]
@@ -90,6 +104,42 @@ class XcodeSettingsTest(unittest.TestCase):
             ios = stock_ios(Path(tmp) / "ios", {TARGET_RELEASE: ['APP_ID = "com.example.$(SUFFIX)";']},
                             {"Release.xcconfig": '#include "Suffix.xcconfig"\n', "Suffix.xcconfig": "SUFFIX = app\n"})
             self.assertEqual(self.values(ios, "Release", "APP_ID"), ["com.example.app"])
+
+
+class FlavorTest(SettingsCase):
+    def pick(self, ios, flavor):
+        return self.run_tool(ios, "--flavor", flavor)
+
+    def test_row7_dev(self):
+        self.assertEqual(self.values(FLAVORS, "--flavor", "dev"), ["Release-dev", "dev"])
+        self.assertEqual(self.values(FLAVORS, "Release-dev", "PRODUCT_BUNDLE_IDENTIFIER",
+                                     "ASSETCATALOG_COMPILER_APPICON_NAME", "FLUTTER_TARGET", "BUNDLE_DISPLAY_NAME"),
+                         ["ly.example.stockApp.dev", "devAppIcon", "lib/main_dev.dart", "Dev App"])
+
+    def test_row8_sentence_case(self):
+        self.assertEqual(self.values(FLAVORS, "--flavor", "prod"), ["Release-Prod", "Prod"])
+
+    def test_row9_fuzzy(self):
+        self.assertEqual(self.values(FLAVORS, "--flavor", "STAGING"), ["Release staging", "staging"])
+
+    def test_row10_several(self):
+        proc = self.pick(FLAVORS, "qa")
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("more than one", proc.stderr)
+        self.assertIn("Release-qa-a, Release-qa-b", proc.stderr)
+
+    def test_row11_none(self):
+        proc = self.pick(FLAVORS, "nocfg")
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("no Release build configuration for scheme nocfg", proc.stderr)
+        proc = self.pick(FLAVORS, "missing")
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("schemes: Prod, Runner, dev, nocfg, qa, staging", proc.stderr)
+
+    def test_row12_no_custom_schemes(self):
+        proc = self.pick(STOCK, "dev")
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("schemes: Runner", proc.stderr)
 
 
 if __name__ == "__main__":

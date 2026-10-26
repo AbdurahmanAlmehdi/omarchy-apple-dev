@@ -9,6 +9,9 @@
 #
 # Env overrides: FLUTTER, BUNDLE_ID, BUILD_NAME, BUILD_NUMBER, MIN_IOS
 # (defaults come from the app's Xcode project and pubspec.yaml).
+# FLAVOR and TARGET are `flutter build ios --flavor` and `-t`: FLAVOR picks the
+# scheme and its Release configuration, TARGET the Dart entry point (default:
+# the configuration's FLUTTER_TARGET, else lib/main.dart).
 # STRIP_FRAMEWORKS="A B" leaves A.framework and B.framework out of the app.
 # SPLIT_DEBUG_INFO=<dir> and DART_OBFUSCATION=true do what `flutter build
 # --split-debug-info` and `--obfuscate` do.
@@ -44,12 +47,31 @@ file -b "$flutter_root/bin/cache/artifacts/engine/ios-release/gen_snapshot_arm64
   { echo "Flutter's iOS gen_snapshot is not the Linux build; run $here/setup.sh" >&2; exit 1; }
 
 configuration=Release
+flavor_opts=()
+if [ -n "${FLAVOR:-}" ]; then
+  # The scheme and configuration `flutter build ios --flavor` picks, and the
+  # defines xcode_backend.dart then passes. On a Mac, flutter assemble reads
+  # appFlavor back from the configuration's scheme, so -dFlavor is the scheme's
+  # spelling; here flavor-scoped assets follow it too, where a Mac uses FLAVOR
+  # as typed. A scheme spelled differently from FLAVOR gets a warning.
+  picked=$(python3 "$here/tools/xcode_settings.py" "$app/ios" --flavor "$FLAVOR")
+  configuration=${picked%%$'\n'*} scheme=${picked#*$'\n'}
+  flavor_opts=("-dFlavor=$scheme" "-dConfiguration=$configuration")
+  [ "$scheme" = "$FLAVOR" ] ||
+    echo "warning: FLAVOR=$FLAVOR builds scheme $scheme; appFlavor and flavor-scoped assets get '$scheme'" >&2
+fi
 setting() { # a build setting of the Runner target in $configuration, expanded as Xcode does
   python3 "$here/tools/xcode_settings.py" "$app/ios" "$configuration" "$1"
 }
 BUNDLE_ID=${BUNDLE_ID:-$(setting PRODUCT_BUNDLE_IDENTIFIER)}
 MIN_IOS=${MIN_IOS:-$(setting IPHONEOS_DEPLOYMENT_TARGET)}
 families=$(setting TARGETED_DEVICE_FAMILY); families=${families:-1,2}
+info_plist=$(setting INFOPLIST_FILE)
+[ "$(cd "$app/ios" && realpath -m "${info_plist:-Runner/Info.plist}")" = "$app/ios/Runner/Info.plist" ] ||
+  { echo "the $configuration configuration's INFOPLIST_FILE is $info_plist; build.sh reads Runner/Info.plist only" >&2; exit 1; }
+target=${TARGET:-$(setting FLUTTER_TARGET)}; target=${target:-lib/main.dart}
+(cd "$app" && [ -f "$target" ]) ||
+  { echo "no Dart entry point $target in $app (TARGET, else the $configuration configuration's FLUTTER_TARGET, else lib/main.dart)" >&2; exit 1; }
 version=$(sed -n 's/^version: *//p' "$app/pubspec.yaml" | head -n1)
 BUILD_NAME=${BUILD_NAME:-${version%%+*}}
 BUILD_NUMBER=${BUILD_NUMBER:-$([ "${version#*+}" != "$version" ] && echo "${version#*+}" || echo 1)}
@@ -91,9 +113,9 @@ echo "== 1. Flutter: Dart AOT, assets, engine framework, native assets"
 defines=""
 for d in "$@"; do defines+="${defines:+,}$(printf '%s' "$d" | base64 -w0)"; done
 (cd "$app" && "$FLUTTER" pub get >/dev/null && "$FLUTTER" assemble --no-version-check --output="$asm" \
-  -dTargetPlatform=ios -dTargetFile=lib/main.dart -dBuildMode=release -dIosArchs=arm64 \
+  -dTargetPlatform=ios -dTargetFile="$target" -dBuildMode=release -dIosArchs=arm64 \
   -dSdkRoot="$ios_sdk" -dTrackWidgetCreation=false -dTreeShakeIcons=true -dCodesignIdentity=- \
-  "${dart_opts[@]+"${dart_opts[@]}"}" \
+  "${dart_opts[@]+"${dart_opts[@]}"}" "${flavor_opts[@]+"${flavor_opts[@]}"}" \
   ${defines:+--DartDefines="$defines"} release_ios_bundle_flutter_assets) >"$out/assemble.log" 2>&1 ||
   { tail -n 40 "$out/assemble.log" >&2; exit 1; }
 
@@ -231,7 +253,7 @@ if [ "${#dsym_missing[@]}" -gt 0 ]; then
   echo "warning: no dSYM for ${dsym_missing[*]} (see $out/dsymutil.log)" >&2
 fi
 if [ -n "$split_dir" ]; then echo "Dart symbols in $split_dir"; fi
-echo "Built $out/Runner.ipa ($BUNDLE_ID $BUILD_NAME+$BUILD_NUMBER, iOS $MIN_IOS+)"
+echo "Built $out/Runner.ipa ($BUNDLE_ID $BUILD_NAME+$BUILD_NUMBER, iOS $MIN_IOS+${FLAVOR:+, $configuration})"
 
 if [ -n "$install" ]; then
   xt=${XTOOL:-$HOME/.local/bin/xtool}
