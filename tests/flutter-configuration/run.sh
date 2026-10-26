@@ -22,6 +22,8 @@
 #   10 plist:      the configuration's INFOPLIST_FILE is not Runner/Info.plist
 #                  -> exit 1, names it
 #   11 wired:      flutter assemble gets -dTargetFile="$target" and the flavor defines
+#   12 recorded:   build.sh writes the configuration to build/ios-linux/configuration
+#                  for flutter/ship.sh
 # Mutants (each must fail its row; checked by hand when the test was written):
 #   M1  pass no configuration to gen-info-plist.py -> row 4
 #   M2  ignore FLUTTER_TARGET -> row 5
@@ -122,5 +124,8 @@ assemble=$(awk '/"\$FLUTTER" assemble/,/release_ios_bundle_flutter_assets\)/' "$
 if grep -qF -- '-dTargetFile="$target"' <<<"$assemble" &&
    grep -qF '"${flavor_opts[@]+"${flavor_opts[@]}"}"' <<<"$assemble"; then ok "row 11 assemble gets target and flavor"
 else bad "row 11 assemble call does not pass the target and flavor defines"; fi
+
+if grep -qxF "printf '%s\n' \"\$configuration\" >\"\$out/configuration\"" "$BUILD"; then ok "row 12 configuration recorded"
+else bad "row 12 build.sh does not record the configuration"; fi
 
 exit "$fail"

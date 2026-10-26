@@ -116,6 +116,8 @@ for d in "$asm" "$stage" "$out/Payload"; do
   [ ! -d "$d" ] || find "$d" -mindepth 1 -delete
 done
 mkdir -p "$asm" "$shell_pkg" "$stage/sbc" "$bundle/Frameworks"
+# flutter/ship.sh signs with this configuration's entitlements.
+printf '%s\n' "$configuration" >"$out/configuration"
 
 export PATH="$here/shims:$sdkb/toolset/bin:$tc:$PATH"
 export XCRUN_SHIM_LOG=$out/shims.log
