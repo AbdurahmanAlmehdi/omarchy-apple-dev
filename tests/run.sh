@@ -40,6 +40,9 @@ bash tests/sdk-state/check.sh || fail=1
 echo "== tests/flutter-dart-symbols/run.sh"
 bash tests/flutter-dart-symbols/run.sh || fail=1
 
+echo "== tests/flutter-configuration/run.sh"
+bash tests/flutter-configuration/run.sh || fail=1
+
 echo "== tests/ship-root-resources/run.sh"
 bash tests/ship-root-resources/run.sh || fail=1
 

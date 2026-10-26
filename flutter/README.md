@@ -29,8 +29,11 @@ starts.
 `KEY=VALUE` arguments become `--dart-define`s. Without `--install` the result
 is `<app>/build/ios-linux/Runner.ipa`, unsigned, for `xtool install` or
 `ship.sh`-style signing. The bundle id, minimum iOS and version come from the
-app's `ios/Runner.xcodeproj` and `pubspec.yaml`; `BUNDLE_ID`, `MIN_IOS`,
-`BUILD_NAME` and `BUILD_NUMBER` override them.
+Release configuration of the Runner target in `ios/Runner.xcodeproj` (with its
+xcconfig) and from `pubspec.yaml`; `BUNDLE_ID`, `MIN_IOS`, `BUILD_NAME` and
+`BUILD_NUMBER` override them. `tools/xcode_settings.py` reads the settings in
+Xcode's order: the target's, its xcconfig's, the project's, then the project's
+xcconfig's.
 
 `SPLIT_DEBUG_INFO=<dir>` and `DART_OBFUSCATION=true` are `flutter build
 --split-debug-info=<dir>` and `--obfuscate`: they reach `flutter assemble` as
@@ -109,7 +112,7 @@ laptop (i7-8650U).
 | Runner and plugins | Xcode project plus Swift packages | `tools/gen-shell-package.py` writes one SwiftPM package from `.flutter-plugins-dependencies`; SwiftBuild compiles it against `Flutter.framework`. |
 | Icons | `actool` | This repo's Linux `actool`. |
 | Storyboards | `ibtool` | This repo's Linux `ibtool`. Flutter's two template storyboards compile byte-identical to Xcode's (FINDINGS.md item 65). |
-| `Info.plist` | Xcode | `tools/gen-info-plist.py`. It expands Flutter's own `$(VAR)`s, the project's build settings and the settings in `Flutter/Release.xcconfig` and the files it includes. |
+| `Info.plist` | Xcode | `tools/gen-info-plist.py`. It expands Flutter's own `$(VAR)`s and the Runner target's build settings in the configuration being built, including its xcconfig (`Flutter/Release.xcconfig`) and the files it includes. |
 
 ## Things that would otherwise bite
 
