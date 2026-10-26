@@ -16,8 +16,10 @@
 #   ASC_KEY_ID=XXXXXXXXXX  ASC_ISSUER_ID=<uuid>  ASC_KEY_PATH=/path/AuthKey_XXXXXXXXXX.p8
 # BUILD_NUMBER overrides CFBundleVersion (default: the one build.sh wrote, from
 # pubspec.yaml or its own BUILD_NUMBER). ASC_ENTITLEMENTS_PATH requests
-# capabilities as for ship.sh. XCODE_VERSION/XCODE_BUILD stamp DTXcode when the
-# SDK has no recorded version (install-toolchain.sh records it from the .xip).
+# capabilities as for ship.sh; when it is unset, the CODE_SIGN_ENTITLEMENTS file
+# of the configuration build.sh built does. XCODE_VERSION/XCODE_BUILD stamp
+# DTXcode when the SDK has no recorded version (install-toolchain.sh records it
+# from the .xip).
 #
 # ASC_PROFILE signs with an identity and profile made elsewhere instead (for a
 # build machine that must not hold the API key or create certificates):
@@ -41,6 +43,19 @@ app=$(readlink -f "$1")
 out=$app/build/ios-linux
 built=$out/Payload/Runner.app
 [ -d "$built" ] || { echo "no $built: run flutter/build.sh first" >&2; exit 1; }
+# The entitlements the app requests, as Xcode signs with them: the
+# CODE_SIGN_ENTITLEMENTS of the configuration build.sh recorded (a flavor's own).
+if [ -z "${ASC_ENTITLEMENTS_PATH:-}" ] && [ -f "$out/configuration" ]; then
+  configuration=$(cat "$out/configuration")
+  entitlements=$(python3 "$here/tools/xcode_settings.py" "$app/ios" "$configuration" CODE_SIGN_ENTITLEMENTS)
+  if [ -n "$entitlements" ]; then
+    ASC_ENTITLEMENTS_PATH=$(cd "$app/ios" && realpath -m "$entitlements")
+    [ -f "$ASC_ENTITLEMENTS_PATH" ] ||
+      { echo "no $ASC_ENTITLEMENTS_PATH (the $configuration configuration's CODE_SIGN_ENTITLEMENTS)" >&2; exit 1; }
+    export ASC_ENTITLEMENTS_PATH
+    echo "entitlements: $ASC_ENTITLEMENTS_PATH ($configuration)"
+  fi
+fi
 if [ "$upload" = 1 ]; then
   : "${ASC_KEY_ID:?--upload needs ASC_KEY_ID}" "${ASC_ISSUER_ID:?--upload needs ASC_ISSUER_ID}"
   : "${ASC_KEY_PATH:?--upload needs ASC_KEY_PATH (the .p8 file)}"

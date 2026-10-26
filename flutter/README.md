@@ -93,7 +93,9 @@ App Store Connect build-upload API. It needs the same `ASC_KEY_ID`,
 `ASC_ISSUER_ID` and `ASC_KEY_PATH` as `ship.sh --upload` and the app record
 created once in App Store Connect; without `ASC_KEY_ID` it signs with the
 TEST identity, which Apple rejects. `ASC_ENTITLEMENTS_PATH` requests push,
-Sign in with Apple and Associated Domains as for `ship.sh`.
+Sign in with Apple and Associated Domains as for `ship.sh`; when it is unset,
+the `CODE_SIGN_ENTITLEMENTS` file of the configuration `build.sh` built does
+(`build/ios-linux/configuration` records it), so each flavor signs with its own.
 `ASC_SIGNING_KEY` (the path of the PEM private key file), `ASC_SIGNING_CERT`
 (the path of its certificate, DER) and `ASC_PROFILE` (the path of the App Store
 profile) sign with an identity and profile made elsewhere instead (`asc.py

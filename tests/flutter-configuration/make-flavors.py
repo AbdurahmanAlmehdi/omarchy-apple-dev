@@ -6,7 +6,7 @@ configuration found only by the fuzzy match (Release staging), two candidates (q
 
   python3 tests/flutter-configuration/make-flavors.py tests/flutter-configuration
 """
-import re, shutil, sys
+import plistlib, re, shutil, sys
 from pathlib import Path
 root = Path(sys.argv[1]); stock = root / "stock"; dest = root / "flavors"
 shutil.rmtree(dest, ignore_errors=True); shutil.copytree(stock, dest)
@@ -19,9 +19,12 @@ proj_rel, targ_rel = block("97C147041CF9000F007C117D"), block("97C147071CF9000F0
 # name, xcconfig text or None, target overrides
 flavors = [
     ("Debug-dev", "devDebug", {"PRODUCT_BUNDLE_IDENTIFIER": "ly.example.stockApp.dev.debug"}),
-    ("Release-dev", "devRelease", {"PRODUCT_BUNDLE_IDENTIFIER": "ly.example.stockApp.dev"}),
-    ("Release-Prod", "prodRelease", {"PRODUCT_BUNDLE_IDENTIFIER": "ly.example.stockApp"}),
-    ("Release staging", "stagingRelease", {"PRODUCT_BUNDLE_IDENTIFIER": "ly.example.stockApp.staging"}),
+    ("Release-dev", "devRelease", {"PRODUCT_BUNDLE_IDENTIFIER": "ly.example.stockApp.dev",
+                                   "CODE_SIGN_ENTITLEMENTS": "Runner/dev.entitlements"}),
+    ("Release-Prod", "prodRelease", {"PRODUCT_BUNDLE_IDENTIFIER": "ly.example.stockApp",
+                                     "CODE_SIGN_ENTITLEMENTS": '"$(SRCROOT)/Runner/Runner.entitlements"'}),
+    ("Release staging", "stagingRelease", {"PRODUCT_BUNDLE_IDENTIFIER": "ly.example.stockApp.staging",
+                                           "CODE_SIGN_ENTITLEMENTS": "Runner/staging.entitlements"}),
     ("Release-qa-a", None, {"PRODUCT_BUNDLE_IDENTIFIER": "ly.example.stockApp.qa.a"}),
     ("Release-qa-b", None, {"PRODUCT_BUNDLE_IDENTIFIER": "ly.example.stockApp.qa.b"}),
 ]
@@ -44,7 +47,8 @@ for n, (name, xc, over) in enumerate(flavors):
         (dest / "Flutter" / f"{xc}.xcconfig").write_text(xcconfigs[xc])
     t = t.replace("ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;", 'ASSETCATALOG_COMPILER_APPICON_NAME = "$(ASSET_PREFIX)AppIcon";' if xc else "ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;")
     for k, v in over.items():
-        t = re.sub(rf"{k} = [^;]*;", f"{k} = {v};", t)
+        t = re.sub(rf"{k} = [^;]*;", f"{k} = {v};", t) if k in t else \
+            t.replace("\t\t\tbuildSettings = {\n", f"\t\t\tbuildSettings = {{\n\t\t\t\t{k} = {v};\n", 1)
     new_cfgs += p + t
     proj_ids.append(f"\t\t\t\t{pid} /* {name} */,\n"); targ_ids.append(f"\t\t\t\t{tid} /* {name} */,\n")
 text = text.replace("/* End XCBuildConfiguration section */", new_cfgs + "/* End XCBuildConfiguration section */")
@@ -78,6 +82,11 @@ assets = dest / "Runner/Assets.xcassets"
     '      "platform" : "ios",\n      "size" : "1024x1024"\n    }\n  ],\n'
     '  "info" : {\n    "author" : "xcode",\n    "version" : 1\n  }\n}\n')
 shutil.copytree(assets / "AppIcon.appiconset", assets / "prodAppIcon.appiconset")
+
+# Entitlements for dev and prod; staging's file is missing.
+(dest / "Runner").mkdir(exist_ok=True)
+for name, aps in (("dev", "development"), ("Runner", "production")):
+    (dest / f"Runner/{name}.entitlements").write_bytes(plistlib.dumps({"aps-environment": aps}))
 schemes = dest / "Runner.xcodeproj/xcshareddata/xcschemes"; schemes.mkdir(parents=True, exist_ok=True)
 for s in ("Runner", "dev", "Prod", "staging", "qa", "nocfg"):
     (schemes / f"{s}.xcscheme").write_text(f'<?xml version="1.0" encoding="UTF-8"?>\n<Scheme version = "1.3">\n</Scheme>\n')

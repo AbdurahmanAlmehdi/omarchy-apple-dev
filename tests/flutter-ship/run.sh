@@ -21,12 +21,25 @@
 #     before rcodesign runs
 #   8  given:     ASC_PROFILE (with ASC_KEY_ID set too) -> given-identity, not
 #     identity or test-identity, and no TEST-identity warning
+# Requested entitlements, with the app's ios/ from tests/flutter-configuration
+# and the configuration build.sh records in build/ios-linux/configuration:
+#   9  flavor:    Release-dev -> the identity step gets ASC_ENTITLEMENTS_PATH=
+#     <app>/ios/Runner/dev.entitlements (its CODE_SIGN_ENTITLEMENTS, made absolute)
+#   10 env:       ASC_ENTITLEMENTS_PATH set -> that file, not the configuration's
+#   11 $(SRCROOT): Release-Prod's "$(SRCROOT)/Runner/Runner.entitlements" -> that file
+#   12 missing:   "Release staging" names a file that is not there -> exit 1
+#     before any step, naming it
+#   13 none:      Release of the stock template (no CODE_SIGN_ENTITLEMENTS), or no
+#     recorded configuration -> no ASC_ENTITLEMENTS_PATH, as before
 # Mutants (each must fail its row; checked by hand when the test was written):
 #   M1  sign the app before the frameworks -> row 1 (order)
 #   M2  sign $built instead of the staged copy -> row 1 (built bundle changed)
 #   M3  drop the chmod -R u+w line -> row 6
 #   M4  drop the team-id regex check -> row 7
 #   M5  test ASC_KEY_ID before ASC_PROFILE -> row 8
+#   M6  ignore a set ASC_ENTITLEMENTS_PATH -> row 10
+#   M7  leave the path relative to ios/ -> row 9
+#   M8  drop the file check -> row 12
 # usage: run.sh [path-to-flutter/ship.sh]   default: ../../flutter/ship.sh
 set -uo pipefail
 here=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
@@ -48,7 +61,7 @@ if [ "$1" = "-c" ]; then exec python3 "$@"; fi
 tool=$(basename "$1"); shift
 case "$tool" in
   asc.py)
-    echo "asc $1 $(basename "$2")${3:+ $(basename "$3")}" >>"$STUB_LOG"
+    echo "asc $1 $(basename "$2")${3:+ $(basename "$3")}${ASC_ENTITLEMENTS_PATH:+ ent=$ASC_ENTITLEMENTS_PATH}" >>"$STUB_LOG"
     case "$1" in
       identity|given-identity|test-identity)
         mkdir -p "$3"
@@ -100,7 +113,7 @@ drive() {
   while [ "$1" != "--" ]; do envargs+=("$1"); shift; done
   shift
   : >"$log"
-  env -u ASC_KEY_ID -u ASC_ISSUER_ID -u ASC_KEY_PATH -u ASC_PROFILE -u BUILD_NUMBER \
+  env -u ASC_KEY_ID -u ASC_ISSUER_ID -u ASC_KEY_PATH -u ASC_PROFILE -u ASC_ENTITLEMENTS_PATH -u BUILD_NUMBER \
     HOME="$home" STUB_LOG="$log" "${envargs[@]}" bash "$SHIP" "$@"
 }
 
@@ -174,5 +187,44 @@ if drive "$tmp/r8.log" ASC_KEY_ID=KEY1234567 ASC_PROFILE=/dev/null -- "$tmp/r8" 
    ! grep -q '^asc identity\|test-identity' "$tmp/r8.log" &&
    ! grep -q 'TEST identity' "$tmp/r8.out"; then ok "row 8 given identity"; else
   bad "row 8 given identity"; sed 's/^/  /' "$tmp/r8.log" "$tmp/r8.out"; fi
+
+# flavored <dir> <fixture> <configuration>: mkapp plus ios/ and the recorded configuration.
+flavored() {
+  mkapp "$1"
+  cp -R "$here/../flutter-configuration/$2" "$1/ios"
+  printf '%s\n' "$3" >"$1/build/ios-linux/configuration"
+}
+
+# Row 9
+flavored "$tmp/r9" flavors Release-dev
+if drive "$tmp/r9.log" -- "$tmp/r9" >"$tmp/r9.out" 2>&1 &&
+   grep -qx "asc test-identity Runner.app ship-signing ent=$tmp/r9/ios/Runner/dev.entitlements" "$tmp/r9.log"; then
+  ok "row 9 the flavor's entitlements"; else bad "row 9 flavor entitlements"; sed 's/^/  /' "$tmp/r9.log" "$tmp/r9.out"; fi
+
+# Row 10
+flavored "$tmp/r10" flavors Release-dev
+if drive "$tmp/r10.log" ASC_ENTITLEMENTS_PATH=/given.entitlements -- "$tmp/r10" >"$tmp/r10.out" 2>&1 &&
+   grep -qx "asc test-identity Runner.app ship-signing ent=/given.entitlements" "$tmp/r10.log"; then
+  ok "row 10 ASC_ENTITLEMENTS_PATH wins"; else bad "row 10 ASC_ENTITLEMENTS_PATH"; sed 's/^/  /' "$tmp/r10.log"; fi
+
+# Row 11
+flavored "$tmp/r11" flavors Release-Prod
+if drive "$tmp/r11.log" -- "$tmp/r11" >"$tmp/r11.out" 2>&1 &&
+   grep -qx "asc test-identity Runner.app ship-signing ent=$tmp/r11/ios/Runner/Runner.entitlements" "$tmp/r11.log"; then
+  ok "row 11 \$(SRCROOT) path"; else bad "row 11 \$(SRCROOT) path"; sed 's/^/  /' "$tmp/r11.log" "$tmp/r11.out"; fi
+
+# Row 12
+flavored "$tmp/r12" flavors "Release staging"
+if drive "$tmp/r12.log" -- "$tmp/r12" >"$tmp/r12.out" 2>&1; then bad "row 12 missing file accepted"
+elif [ -s "$tmp/r12.log" ]; then bad "row 12 ran steps before failing"
+elif grep -q "staging.entitlements" "$tmp/r12.out"; then ok "row 12 missing file stops"
+else bad "row 12 message"; sed 's/^/  /' "$tmp/r12.out"; fi
+
+# Row 13
+flavored "$tmp/r13" stock Release
+mkapp "$tmp/r13b"
+if drive "$tmp/r13.log" -- "$tmp/r13" >/dev/null 2>&1 && drive "$tmp/r13b.log" -- "$tmp/r13b" >/dev/null 2>&1 &&
+   ! grep -q "ship-signing ent=" "$tmp/r13.log" "$tmp/r13b.log"; then ok "row 13 no entitlements as before"
+else bad "row 13 no entitlements"; sed 's/^/  /' "$tmp/r13.log" "$tmp/r13b.log"; fi
 
 exit "$fail"
