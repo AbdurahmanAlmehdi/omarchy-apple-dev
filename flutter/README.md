@@ -35,6 +35,16 @@ xcconfig) and from `pubspec.yaml`; `BUNDLE_ID`, `MIN_IOS`, `BUILD_NAME` and
 Xcode's order: the target's, its xcconfig's, the project's, then the project's
 xcconfig's.
 
+`FLAVOR=<name>` and `TARGET=<file>` are `flutter build ios --flavor` and
+`-t`. `FLAVOR` picks the scheme and its Release configuration with Flutter's
+own matching (the flavor in sentence case, then `Release-<scheme>`, ignoring
+case, then the one configuration whose name holds both), and the bundle id,
+minimum iOS and `Info.plist` values come from that configuration. No match, or
+more than one, stops the build with the schemes and configurations the project
+has. `flutter assemble` gets `-dFlavor=<scheme>` and
+`-dConfiguration=<configuration>`, as on a Mac. The Dart entry point is
+`TARGET`, else the configuration's `FLUTTER_TARGET`, else `lib/main.dart`.
+
 `SPLIT_DEBUG_INFO=<dir>` and `DART_OBFUSCATION=true` are `flutter build
 --split-debug-info=<dir>` and `--obfuscate`: they reach `flutter assemble` as
 the same `-dSplitDebugInfo` and `-dDartObfuscation` defines Xcode's build
@@ -141,5 +151,10 @@ laptop (i7-8650U).
   app extensions, entitlements beyond the defaults, simulator builds.
 - `Info.plist` values from an xcconfig ignore conditional settings
   (`KEY[sdk=iphoneos*] = …`); the unconditional value is used.
+- With `FLAVOR`, the icon set is still `AppIcon` and the storyboards still
+  `Base.lproj`'s, whatever the configuration names. A configuration with its
+  own `INFOPLIST_FILE` stops the build. Flavor-scoped assets follow the
+  scheme's spelling, where a Mac follows `FLAVOR` as typed; `build.sh` warns
+  when the two differ.
 - A Flutter upgrade needs `flutter/setup.sh` again: the snapshot format is
   tied to the exact Dart revision.
