@@ -16,7 +16,7 @@ class ToolCase(unittest.TestCase):
     def run_tool(self, xcconfigs, info, pbx=(), settings=None, configuration=()):
         with tempfile.TemporaryDirectory() as tmp:
             ios = stock_ios(Path(tmp) / "ios", settings or {TARGET_RELEASE: pbx}, xcconfigs)
-            (ios / "Runner").mkdir()
+            (ios / "Runner").mkdir(exist_ok=True)
             src = ios / "Runner/Info.plist"
             src.write_bytes(plistlib.dumps(info))
             icon = Path(tmp) / "icon.plist"
