@@ -2,10 +2,14 @@
 """Build settings of a Flutter app's Runner target in one build configuration.
 
   xcode_settings.py <ios dir> <configuration> NAME...
+  xcode_settings.py <ios dir> --flavor FLAVOR
 
-Prints the value of each NAME on its own line, with its $(VAR)s expanded.
-The configuration is matched ignoring case, as Flutter does; a configuration
-the Runner target lacks is an error that lists the ones it has.
+The first form prints the value of each NAME on its own line, with its $(VAR)s
+expanded. The configuration is matched ignoring case, as Flutter does; a
+configuration the Runner target lacks is an error that lists the ones it has.
+The second prints the Release configuration and the scheme `flutter build ios
+--flavor FLAVOR` builds, one per line, or stops with the schemes and
+configurations the project has when there is no single match.
 
 As in Xcode, the target's settings win over the target's xcconfig, then the
 project's settings, then the project's xcconfig, and $(inherited) is the value
@@ -15,6 +19,7 @@ is empty, a later assignment wins, a missing `#include?` file is skipped, an
 include cycle is cut by file, and conditional settings (`A[sdk=iphoneos*]`)
 are skipped. gen-info-plist.py reads the same settings for Info.plist values.
 """
+import glob
 import os
 import re
 import sys
@@ -50,12 +55,50 @@ def expand(text, lookup, resolving=()):
     return re.sub(r"\$\((\w+)\)", setting, text)
 
 
+def configurations(gen, owner):
+    cfg_list = gen.objs.get(owner.get("buildConfigurationList"), {})
+    return [gen.objs[c].get("name") for c in cfg_list.get("buildConfigurations", [])]
+
+
+def schemes(ios_dir):
+    """The schemes `xcodebuild -list` shows: shared and user ones, or Runner when there are none."""
+    proj = os.path.join(ios_dir, "Runner.xcodeproj")
+    files = glob.glob(os.path.join(proj, "xcshareddata", "xcschemes", "*.xcscheme"))
+    files += glob.glob(os.path.join(proj, "xcuserdata", "*.xcuserdatad", "xcschemes", "*.xcscheme"))
+    return sorted({os.path.basename(f)[:-len(".xcscheme")] for f in files}) or ["Runner"]
+
+
+def flavor_configuration(ios_dir, flavor):
+    """(configuration, scheme) as flutter_tools' XcodeProjectInfo.schemeFor and
+    buildConfigurationFor pick them for a release build (xcodeproj.dart, Flutter 3.47.6):
+    the scheme is the flavor in sentence case, else the one scheme equal to it
+    ignoring case; the configuration is Release-<scheme> ignoring case, else the one
+    whose name contains both "release" and the scheme. Where Flutter falls back to
+    plain Release with a warning, this stops: the flavor's settings would be lost."""
+    names = schemes(ios_dir)
+    expected = flavor[:1].upper() + flavor[1:]
+    found = [expected] if expected in names else [n for n in names if n.lower() == expected.lower()]
+    if len(found) != 1:
+        raise SystemExit(f"error: no scheme for FLAVOR={flavor} (Flutter looks for {expected!r}, ignoring case); "
+                         f"the Xcode project defines schemes: {', '.join(names)}")
+    scheme = found[0]
+    gen = xcodeproj2xtool.Generator(os.path.join(ios_dir, "Runner.xcodeproj"), "Runner")
+    configs = configurations(gen, gen.project)
+    found = [c for c in configs if c.lower() == f"release-{scheme}".lower()] or \
+        [c for c in configs if "release" in c.lower() and scheme.lower() in c.lower()]
+    if len(found) != 1:
+        raise SystemExit(f"error: {'no' if not found else 'more than one'} Release build configuration for scheme "
+                         f"{scheme} (Flutter looks for Release-{scheme}, then one name with both 'release' and "
+                         f"{scheme!r} in it, ignoring case): {', '.join(found or configs)}; "
+                         f"the Xcode project defines schemes: {', '.join(names)}")
+    return found[0], scheme
+
+
 class Settings:
     def __init__(self, ios_dir, configuration):
         gen = xcodeproj2xtool.Generator(os.path.join(ios_dir, "Runner.xcodeproj"), "Runner")
         _oid, target = gen.pick_target()
-        cfg_list = gen.objs.get(target.get("buildConfigurationList"), {})
-        names = [gen.objs[c].get("name") for c in cfg_list.get("buildConfigurations", [])]
+        names = configurations(gen, target)
         found = [n for n in names if n.lower() == configuration.lower()]
         if not found:
             raise SystemExit(f"error: the Runner target has no {configuration!r} build configuration "
@@ -94,7 +137,10 @@ class Settings:
 
 if __name__ == "__main__":
     if len(sys.argv) < 4:
-        sys.exit("usage: xcode_settings.py <ios dir> <configuration> NAME...")
+        sys.exit("usage: xcode_settings.py <ios dir> <configuration> NAME... | <ios dir> --flavor FLAVOR")
+    if sys.argv[2] == "--flavor":
+        print("\n".join(flavor_configuration(sys.argv[1], sys.argv[3])))
+        sys.exit()
     settings = Settings(sys.argv[1], sys.argv[2])
     for setting_name in sys.argv[3:]:
         print(settings.value(setting_name))
