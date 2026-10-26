@@ -72,6 +72,20 @@ info_plist=$(setting INFOPLIST_FILE)
 target=${TARGET:-$(setting FLUTTER_TARGET)}; target=${target:-lib/main.dart}
 (cd "$app" && [ -f "$target" ]) ||
   { echo "no Dart entry point $target in $app (TARGET, else the $configuration configuration's FLUTTER_TARGET, else lib/main.dart)" >&2; exit 1; }
+# The app icon set the configuration names (flutter_flavorizr names one per
+# flavor). A set that lists every size, as Flutter's template does, compiles,
+# but App Store processing has hung on one with no error.
+appicon=$(setting ASSETCATALOG_COMPILER_APPICON_NAME)
+icon_args=()
+[ -n "$appicon" ] && icon_args=(--app-icon "$appicon") ||
+  echo "warning: the $configuration configuration names no app icon set (ASSETCATALOG_COMPILER_APPICON_NAME); the app gets no icon" >&2
+iconset=$app/ios/Runner/Assets.xcassets/$appicon.appiconset
+[ -z "$appicon" ] || [ -f "$iconset/Contents.json" ] ||
+  { echo "no app icon set $appicon in ios/Runner/Assets.xcassets (the $configuration configuration's ASSETCATALOG_COMPILER_APPICON_NAME)" >&2; exit 1; }
+[ -z "$appicon" ] || python3 -c 'import json, sys
+images = json.load(open(sys.argv[1])).get("images", [])
+sys.exit(not images or not all(i.get("idiom") == "universal" and "scale" not in i and i.get("size") == "1024x1024" for i in images))' "$iconset/Contents.json" ||
+  echo "warning: app icon set $appicon lists several sizes; App Store processing has hung on such a set with no error (FINDINGS.md item 68). One 1024x1024 universal image avoids it." >&2
 version=$(sed -n 's/^version: *//p' "$app/pubspec.yaml" | head -n1)
 BUILD_NAME=${BUILD_NAME:-${version%%+*}}
 BUILD_NUMBER=${BUILD_NUMBER:-$([ "${version#*+}" != "$version" ] && echo "${version#*+}" || echo 1)}
@@ -101,7 +115,7 @@ asm=$out/assemble; shell_pkg=$out/shell; stage=$out/stage; bundle=$out/Payload/R
 for d in "$asm" "$stage" "$out/Payload"; do
   [ ! -d "$d" ] || find "$d" -mindepth 1 -delete
 done
-mkdir -p "$asm" "$shell_pkg" "$stage/sbc" "$bundle/Frameworks" "$bundle/Base.lproj"
+mkdir -p "$asm" "$shell_pkg" "$stage/sbc" "$bundle/Frameworks"
 
 export PATH="$here/shims:$sdkb/toolset/bin:$tc:$PATH"
 export XCRUN_SHIM_LOG=$out/shims.log
@@ -145,18 +159,37 @@ products=$shell_pkg/.build/out/Products/Release-iphoneos
 
 echo "== 3. Wrapper: icons, storyboards, Info.plist"
 "$tools/actool" "$app/ios/Runner/Assets.xcassets" --compile "$bundle" --platform iphoneos \
-  --app-icon AppIcon --minimum-deployment-target "$MIN_IOS" --target-device iphone --target-device ipad \
+  "${icon_args[@]+"${icon_args[@]}"}" --minimum-deployment-target "$MIN_IOS" --target-device iphone --target-device ipad \
   --output-partial-info-plist "$stage/icon.plist" --output-format human-readable-text >"$out/actool.log" 2>&1 ||
   { cat "$out/actool.log" >&2; exit 1; }
-for sb in "$app"/ios/Runner/Base.lproj/*.storyboard; do
+# The storyboards the Runner target's Copy Bundle Resources phase lists, as
+# Xcode builds them: each is compiled into its X.lproj (which makes its strings
+# localizable) or, when it is not localized, into a plain directory, and the
+# link keeps that directory's X.lproj, so the rest land at the bundle root.
+storyboards=$(python3 "$here/tools/xcode_settings.py" "$app/ios" --storyboards)
+while IFS= read -r rel; do
+  [ -n "$rel" ] || continue
+  lproj=$(basename "$(dirname "$rel")")
+  case $lproj in *.lproj) ;; *) lproj=root ;; esac
+  mkdir -p "$stage/sbc/$lproj"
   "$ibtool" --module Runner --minimum-deployment-target "$MIN_IOS" --target-device iphone \
-    --target-device ipad --output-partial-info-plist "$stage/$(basename "$sb").plist" "$sb" \
-    --compilation-directory "$stage/sbc" 2>"$out/ibtool.log" || { cat "$out/ibtool.log" >&2; exit 1; }
-done
-"$ibtool" --module Runner --target-device iphone --target-device ipad \
-  --link "$bundle/Base.lproj" "$stage"/sbc/*.storyboardc 2>"$out/ibtool.log" || { cat "$out/ibtool.log" >&2; exit 1; }
+    --target-device ipad --output-partial-info-plist "$stage/$(basename "$rel").plist" "$app/ios/$rel" \
+    --compilation-directory "$stage/sbc/$lproj" 2>"$out/ibtool.log" || { cat "$out/ibtool.log" >&2; exit 1; }
+done <<<"$storyboards"
+compiled=("$stage"/sbc/*/*.storyboardc)
+[ ! -e "${compiled[0]}" ] || "$ibtool" --module Runner --target-device iphone --target-device ipad \
+  --link "$bundle" "${compiled[@]}" 2>"$out/ibtool.log" || { cat "$out/ibtool.log" >&2; exit 1; }
 python3 "$here/tools/gen-info-plist.py" "$app/ios/Runner/Info.plist" "$stage/icon.plist" "$bundle/Info.plist" \
   "$BUNDLE_ID" "$BUILD_NAME" "$BUILD_NUMBER" "$MIN_IOS" "$ios_sdk" "$families" "$configuration"
+# The launch screen Info.plist names must be one of them, or the app launches
+# to a black screen.
+launch=$(python3 -c 'import plistlib, sys
+info = plistlib.load(open(sys.argv[1], "rb"))
+print("\n".join(sorted({v for k, v in info.items() if k.split("~")[0] == "UILaunchStoryboardName" and v})))' "$bundle/Info.plist")
+while IFS= read -r name; do
+  [ -z "$name" ] || [ -d "$bundle/$name.storyboardc" ] || compgen -G "$bundle/*.lproj/$name.storyboardc" >/dev/null ||
+    { echo "launch screen $name (Info.plist, $configuration configuration) is not a storyboard the Runner target's resources list" >&2; exit 1; }
+done <<<"$launch"
 
 echo "== 4. Assemble"
 cp "$products/Runner" "$bundle/Runner"

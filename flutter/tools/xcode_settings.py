@@ -3,13 +3,16 @@
 
   xcode_settings.py <ios dir> <configuration> NAME...
   xcode_settings.py <ios dir> --flavor FLAVOR
+  xcode_settings.py <ios dir> --storyboards
 
 The first form prints the value of each NAME on its own line, with its $(VAR)s
 expanded. The configuration is matched ignoring case, as Flutter does; a
 configuration the Runner target lacks is an error that lists the ones it has.
 The second prints the Release configuration and the scheme `flutter build ios
 --flavor FLAVOR` builds, one per line, or stops with the schemes and
-configurations the project has when there is no single match.
+configurations the project has when there is no single match. The third prints
+the storyboards the Runner target's Copy Bundle Resources phase lists, relative
+to the ios dir (a localized one under its X.lproj), one per line.
 
 As in Xcode, the target's settings win over the target's xcconfig, then the
 project's settings, then the project's xcconfig, and $(inherited) is the value
@@ -94,6 +97,13 @@ def flavor_configuration(ios_dir, flavor):
     return found[0], scheme
 
 
+def storyboards(ios_dir):
+    gen = xcodeproj2xtool.Generator(os.path.join(ios_dir, "Runner.xcodeproj"), "Runner")
+    _oid, target = gen.pick_target()
+    return [path for _ref, path in gen.phase_files(target, "PBXResourcesBuildPhase")
+            if path.lower().endswith(".storyboard")]
+
+
 class Settings:
     def __init__(self, ios_dir, configuration):
         gen = xcodeproj2xtool.Generator(os.path.join(ios_dir, "Runner.xcodeproj"), "Runner")
@@ -136,8 +146,12 @@ class Settings:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 4:
-        sys.exit("usage: xcode_settings.py <ios dir> <configuration> NAME... | <ios dir> --flavor FLAVOR")
+    if len(sys.argv) < 3 or len(sys.argv) < 4 and sys.argv[2] != "--storyboards":
+        sys.exit("usage: xcode_settings.py <ios dir> <configuration> NAME... | <ios dir> --flavor FLAVOR"
+                 " | <ios dir> --storyboards")
+    if sys.argv[2] == "--storyboards":
+        print("\n".join(storyboards(sys.argv[1])))
+        sys.exit()
     if sys.argv[2] == "--flavor":
         print("\n".join(flavor_configuration(sys.argv[1], sys.argv[3])))
         sys.exit()

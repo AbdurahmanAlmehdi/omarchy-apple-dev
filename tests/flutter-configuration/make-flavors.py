@@ -1,5 +1,6 @@
 """Writes tests/flutter-configuration/flavors from the stock fixture: per-flavor configurations
 in the layout flutter_flavorizr writes (an xcconfig per flavor and configuration, ASSET_PREFIX),
+a non-localized launch storyboard, per-flavor icon sets,
 plus the shapes Flutter's matching has to handle: a scheme spelled with a capital (Prod), a
 configuration found only by the fuzzy match (Release staging), two candidates (qa) and none (nocfg).
 
@@ -52,7 +53,31 @@ text = text.replace("\t\t\t\t9740EEB31CF90195004384FC /* Generated.xcconfig */,\
 for list_id, ids in (("97C146E91CF9000F007C117D", proj_ids), ("97C147051CF9000F007C117D", targ_ids)):
     i = text.index(f"\t\t{list_id} /* Build configuration list"); j = text.index("\t\t\t);\n", i)
     text = text[:j] + "".join(ids) + text[j:]
+# A launch screen that is not localized, as flutter_native_splash writes one per flavor.
+text = text.replace("/* End PBXFileReference section */",
+                    "\t\tF1A000000000000000000401 /* devLaunchScreen.storyboard */ = {isa = PBXFileReference; "
+                    "lastKnownFileType = file.storyboard; path = devLaunchScreen.storyboard; sourceTree = \"<group>\"; };\n"
+                    "/* End PBXFileReference section */")
+text = text.replace("/* End PBXBuildFile section */",
+                    "\t\tF1A000000000000000000402 /* devLaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; "
+                    "fileRef = F1A000000000000000000401 /* devLaunchScreen.storyboard */; };\n/* End PBXBuildFile section */")
+text = text.replace("\t\t\t\t74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,\n",
+                    "\t\t\t\t74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,\n"
+                    "\t\t\t\tF1A000000000000000000401 /* devLaunchScreen.storyboard */,\n")
+text = text.replace("\t\t\t\t97C146FC1CF9000F007C117D /* Main.storyboard in Resources */,\n",
+                    "\t\t\t\t97C146FC1CF9000F007C117D /* Main.storyboard in Resources */,\n"
+                    "\t\t\t\tF1A000000000000000000402 /* devLaunchScreen.storyboard in Resources */,\n")
+shutil.copy(dest / "Runner/Base.lproj/LaunchScreen.storyboard", dest / "Runner/devLaunchScreen.storyboard")
 pbx.write_text(text)
+# Icon sets: devAppIcon is single-size, prodAppIcon is the template's multi-size set, and
+# stagingAppIcon is missing.
+assets = dest / "Runner/Assets.xcassets"
+(assets / "devAppIcon.appiconset").mkdir()
+(assets / "devAppIcon.appiconset/Contents.json").write_text(
+    '{\n  "images" : [\n    {\n      "filename" : "dev-1024.png",\n      "idiom" : "universal",\n'
+    '      "platform" : "ios",\n      "size" : "1024x1024"\n    }\n  ],\n'
+    '  "info" : {\n    "author" : "xcode",\n    "version" : 1\n  }\n}\n')
+shutil.copytree(assets / "AppIcon.appiconset", assets / "prodAppIcon.appiconset")
 schemes = dest / "Runner.xcodeproj/xcshareddata/xcschemes"; schemes.mkdir(parents=True, exist_ok=True)
 for s in ("Runner", "dev", "Prod", "staging", "qa", "nocfg"):
     (schemes / f"{s}.xcscheme").write_text(f'<?xml version="1.0" encoding="UTF-8"?>\n<Scheme version = "1.3">\n</Scheme>\n')
