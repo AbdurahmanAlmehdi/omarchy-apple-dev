@@ -29,8 +29,28 @@ starts.
 `KEY=VALUE` arguments become `--dart-define`s. Without `--install` the result
 is `<app>/build/ios-linux/Runner.ipa`, unsigned, for `xtool install` or
 `ship.sh`-style signing. The bundle id, minimum iOS and version come from the
-app's `ios/Runner.xcodeproj` and `pubspec.yaml`; `BUNDLE_ID`, `MIN_IOS`,
-`BUILD_NAME` and `BUILD_NUMBER` override them.
+Release configuration of the Runner target in `ios/Runner.xcodeproj` (with its
+xcconfig) and from `pubspec.yaml`; `BUNDLE_ID`, `MIN_IOS`, `BUILD_NAME` and
+`BUILD_NUMBER` override them. `tools/xcode_settings.py` reads the settings in
+Xcode's order: the target's, its xcconfig's, the project's, then the project's
+xcconfig's.
+
+`FLAVOR=<name>` and `TARGET=<file>` are `flutter build ios --flavor` and
+`-t`. `FLAVOR` picks the scheme and its Release configuration with Flutter's
+own matching (the flavor in sentence case, then `Release-<scheme>`, ignoring
+case, then the one configuration whose name holds both), and the bundle id,
+minimum iOS and `Info.plist` values come from that configuration. No match, or
+more than one, stops the build with the schemes and configurations the project
+has. `flutter assemble` gets `-dFlavor=<scheme>` and
+`-dConfiguration=<configuration>`, as on a Mac. The Dart entry point is
+`TARGET`, else the configuration's `FLUTTER_TARGET`, else `lib/main.dart`.
+
+The app icon set is the configuration's `ASSETCATALOG_COMPILER_APPICON_NAME`
+(a missing set stops the build; one that lists several sizes gets a warning,
+FINDINGS.md item 68), and the storyboards are the ones the Runner target's
+Copy Bundle Resources phase lists: localized ones in their `X.lproj`, the rest
+at the bundle root. A launch screen `Info.plist` names that is not among them
+stops the build.
 
 `SPLIT_DEBUG_INFO=<dir>` and `DART_OBFUSCATION=true` are `flutter build
 --split-debug-info=<dir>` and `--obfuscate`: they reach `flutter assemble` as
@@ -109,7 +129,7 @@ laptop (i7-8650U).
 | Runner and plugins | Xcode project plus Swift packages | `tools/gen-shell-package.py` writes one SwiftPM package from `.flutter-plugins-dependencies`; SwiftBuild compiles it against `Flutter.framework`. |
 | Icons | `actool` | This repo's Linux `actool`. |
 | Storyboards | `ibtool` | This repo's Linux `ibtool`. Flutter's two template storyboards compile byte-identical to Xcode's (FINDINGS.md item 65). |
-| `Info.plist` | Xcode | `tools/gen-info-plist.py`. It expands Flutter's own `$(VAR)`s, the project's build settings and the settings in `Flutter/Release.xcconfig` and the files it includes. |
+| `Info.plist` | Xcode | `tools/gen-info-plist.py`. It expands Flutter's own `$(VAR)`s and the Runner target's build settings in the configuration being built, including its xcconfig (`Flutter/Release.xcconfig`) and the files it includes. |
 
 ## Things that would otherwise bite
 
@@ -138,5 +158,9 @@ laptop (i7-8650U).
   app extensions, entitlements beyond the defaults, simulator builds.
 - `Info.plist` values from an xcconfig ignore conditional settings
   (`KEY[sdk=iphoneos*] = …`); the unconditional value is used.
+- With `FLAVOR`, a configuration with its own `INFOPLIST_FILE` stops the
+  build, and the icon set must be in `ios/Runner/Assets.xcassets`. Flavor-scoped assets follow the
+  scheme's spelling, where a Mac follows `FLAVOR` as typed; `build.sh` warns
+  when the two differ.
 - A Flutter upgrade needs `flutter/setup.sh` again: the snapshot format is
   tied to the exact Dart revision.

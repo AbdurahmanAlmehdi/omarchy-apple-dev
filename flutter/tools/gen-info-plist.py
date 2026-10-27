@@ -3,7 +3,7 @@
 
   gen-info-plist.py <source Info.plist> <actool partial plist> <output>
                     <bundle id> <build name> <build number> <min iOS> <iPhoneOS.sdk>
-                    <device families, e.g. 1,2>
+                    <device families, e.g. 1,2> [<build configuration, default Release>]
 
 Expands the $(BUILD_SETTING) references Flutter's template uses, merges the
 icon keys actool reported, and adds the platform and toolchain keys Xcode
@@ -12,10 +12,13 @@ stamps on a device build.
 import json
 import os
 import plistlib
-import re
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from xcode_settings import Settings, expand  # noqa: E402
+
 src, icon, out, bundle_id, build_name, build_number, min_ios, sdk, families = sys.argv[1:10]
+configuration = sys.argv[10] if len(sys.argv) > 10 else "Release"
 
 settings = {
     "DEVELOPMENT_LANGUAGE": "en",
@@ -30,61 +33,30 @@ settings = {
 }
 
 # Apps whose template goes beyond Flutter's own variable set (MARKETING_VERSION
-# is common) define the values as build settings; take them from the Runner
-# project the plist lives in, first value wins as in build.sh's setting().
-pbx = os.path.join(os.path.dirname(os.path.dirname(src)), "Runner.xcodeproj", "project.pbxproj")
-pbx_settings = {}
-if os.path.isfile(pbx):
-    for m in re.finditer(r"^\s*(\w+) = \"?([^\";\n]*?)\"?;", open(pbx).read(), re.M):
-        pbx_settings.setdefault(m.group(1), m.group(2))
-
-# Settings an app keeps in its own xcconfig (a Google client id, say) reach the
-# plist through Flutter/Release.xcconfig and the files it #includes. As in Xcode,
-# `//` starts a comment (so `https:/$()/host` writes a URL: `$()` is empty), a later
-# assignment wins, `#include?` may be missing, and the project's build settings
-# override the xcconfig's. Conditional settings (`A[sdk=iphoneos*] = x`) are skipped.
-xcconfig_settings = {}
-
-def read_xcconfig(path, seen=()):
-    path = os.path.realpath(path)  # `./A.xcconfig`, `A.xcconfig` and a symlink to it are one file
-    if path in seen or not os.path.isfile(path):
-        return
-    for line in open(path, errors="replace"):
-        line = line.split("//", 1)[0].strip()
-        inc = re.match(r'#include\??\s+"([^"]+)"', line)
-        if inc:
-            read_xcconfig(os.path.join(os.path.dirname(path), inc.group(1)), seen + (path,))
-            continue
-        m = re.match(r"(\w+)\s*=\s*(.*)", line)
-        if m:
-            xcconfig_settings[m.group(1)] = m.group(2).replace("$(inherited)", "").replace("$()", "").strip()
-
-read_xcconfig(os.path.join(os.path.dirname(os.path.dirname(src)), "Flutter", "Release.xcconfig"))
+# is common) define the values as build settings, in the project or in the
+# configuration's xcconfig (Flutter/Release.xcconfig) and the files it includes
+# (a Google client id, say): take them from the Runner target's settings in the
+# configuration being built, as Xcode does.
+build_settings = Settings(os.path.dirname(os.path.dirname(src)), configuration)
 
 def lookup(name):
     if name in settings:
         return settings[name]
-    value = pbx_settings[name] if name in pbx_settings else xcconfig_settings.get(name, "")
+    value = build_settings.raw(name) or ""
     if not value:
         print(f"warning: no value for $({name}); substituting empty", file=sys.stderr)
     return value
 
-def expand(value, resolving=()):
+def expand_all(value):
     if isinstance(value, str):
-        def setting(m):
-            name = m.group(1)
-            if name in resolving:  # A = $(A), or A = $(B) and B = $(A): Xcode refuses these
-                print(f"warning: $({name}) refers to itself; substituting empty", file=sys.stderr)
-                return ""
-            return expand(lookup(name), resolving + (name,))
-        return re.sub(r"\$\((\w+)\)", setting, value)
+        return expand(value, lookup)
     if isinstance(value, dict):
-        return {k: expand(v, resolving) for k, v in value.items()}
+        return {k: expand_all(v) for k, v in value.items()}
     if isinstance(value, list):
-        return [expand(v, resolving) for v in value]
+        return [expand_all(v) for v in value]
     return value
 
-info = expand(plistlib.load(open(src, "rb")))
+info = expand_all(plistlib.load(open(src, "rb")))
 info.update(plistlib.load(open(icon, "rb")))
 
 sdk_version = json.load(open(os.path.join(sdk, "SDKSettings.json")))["Version"]

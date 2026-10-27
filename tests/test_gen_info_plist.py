@@ -6,22 +6,17 @@ import tempfile
 import unittest
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from flutter_fixture import PROJECT_RELEASE, TARGET_DEBUG, TARGET_RELEASE, TESTS_RELEASE, stock_ios  # noqa: E402
+
 TOOL = Path(__file__).resolve().parents[1] / "flutter/tools/gen-info-plist.py"
 
 
-class GenInfoPlistXcconfigTest(unittest.TestCase):
-    """$(VAR)s an app defines in an xcconfig that Flutter/Release.xcconfig includes."""
-
-    def run_tool(self, xcconfigs, info, pbx="", **extra):
+class ToolCase(unittest.TestCase):
+    def run_tool(self, xcconfigs, info, pbx=(), settings=None, configuration=()):
         with tempfile.TemporaryDirectory() as tmp:
-            ios = Path(tmp) / "ios"
-            for name, text in xcconfigs.items():
-                (ios / "Flutter").mkdir(parents=True, exist_ok=True)
-                target = ios / "Flutter" / name
-                target.write_bytes(text) if isinstance(text, bytes) else target.write_text(text)
-            (ios / "Runner").mkdir(parents=True, exist_ok=True)
-            (ios / "Runner.xcodeproj").mkdir()
-            (ios / "Runner.xcodeproj/project.pbxproj").write_text(pbx)
+            ios = stock_ios(Path(tmp) / "ios", settings or {TARGET_RELEASE: pbx}, xcconfigs)
+            (ios / "Runner").mkdir(exist_ok=True)
             src = ios / "Runner/Info.plist"
             src.write_bytes(plistlib.dumps(info))
             icon = Path(tmp) / "icon.plist"
@@ -34,10 +29,14 @@ class GenInfoPlistXcconfigTest(unittest.TestCase):
             out = Path(tmp) / "out.plist"
             proc = subprocess.run(
                 [sys.executable, str(TOOL), str(src), str(icon), str(out), "ly.example.app",
-                 "1.0.0", "7", "15.0", str(sdk), "1,2"],
+                 "1.0.0", "7", "15.0", str(sdk), "1,2", *configuration],
                 capture_output=True, text=True, env={"HOME": tmp})
             self.assertEqual(proc.returncode, 0, proc.stderr)
             return plistlib.loads(out.read_bytes()), proc.stderr
+
+
+class GenInfoPlistXcconfigTest(ToolCase):
+    """$(VAR)s an app defines in an xcconfig that Flutter/Release.xcconfig includes."""
 
     def test_included_xcconfig_values_expand(self):
         info, err = self.run_tool(
@@ -58,11 +57,11 @@ class GenInfoPlistXcconfigTest(unittest.TestCase):
         info, _ = self.run_tool(
             {"Release.xcconfig": "A = first\nA = second\nB = $(inherited) from-xcconfig\nC = xc\n"},
             {"A": "$(A)", "B": "$(B)", "C": "$(C)"},
-            pbx="\t\t\t\tC = project;\n")
+            pbx=["C = project;"])
         self.assertEqual((info["A"], info["B"], info["C"]), ("second", "from-xcconfig", "project"))
 
     def test_empty_project_setting_still_wins(self):
-        info, _ = self.run_tool({"Release.xcconfig": "C = xc\n"}, {"C": "$(C)"}, pbx='\t\t\t\tC = "";\n')
+        info, _ = self.run_tool({"Release.xcconfig": "C = xc\n"}, {"C": "$(C)"}, pbx=['C = "";'])
         self.assertEqual(info["C"], "")
 
     def test_self_reference_is_cut(self):
@@ -111,6 +110,40 @@ class GenInfoPlistXcconfigTest(unittest.TestCase):
             {"X": "$(NOT_SET)"})
         self.assertEqual(info["X"], "")
         self.assertIn("no value for $(NOT_SET)", err)
+
+
+class GenInfoPlistConfigurationTest(ToolCase):
+    """Values come from the Runner target's settings in the configuration being built.
+
+    Rows (expected results written before the code):
+      1  the target's setting wins over the project's, as in Xcode
+      2  a setting only the RunnerTests target has is not used (the old first match used it)
+      3  configuration Debug reads the Debug settings and Flutter/Debug.xcconfig
+      4  a configuration the target lacks stops the tool, listing the ones it has
+    """
+
+    def test_row1_target_over_project(self):
+        info, _ = self.run_tool(xcconfigs={"Release.xcconfig": ""}, info={"A": "$(A)"},
+                                settings={PROJECT_RELEASE: ["A = project;"], TARGET_RELEASE: ["A = target;"]})
+        self.assertEqual(info["A"], "target")
+
+    def test_row2_not_the_test_target(self):
+        info, err = self.run_tool(xcconfigs={"Release.xcconfig": ""}, info={"A": "$(A)"},
+                                  settings={TESTS_RELEASE: ["A = tests;"]})
+        self.assertEqual(info["A"], "")
+        self.assertIn("no value for $(A)", err)
+
+    def test_row3_debug_configuration(self):
+        info, _ = self.run_tool(xcconfigs={"Release.xcconfig": "X = release\n", "Debug.xcconfig": "X = debug\n"},
+                                info={"A": "$(A)", "X": "$(X)"},
+                                settings={TARGET_RELEASE: ["A = release;"], TARGET_DEBUG: ["A = debug;"]},
+                                configuration=["Debug"])
+        self.assertEqual((info["A"], info["X"]), ("debug", "debug"))
+
+    def test_row4_missing_configuration(self):
+        with self.assertRaises(AssertionError) as e:
+            self.run_tool(xcconfigs={}, info={}, configuration=["Release-dev"])
+        self.assertIn("Debug, Release, Profile", str(e.exception))
 
 
 if __name__ == "__main__":
