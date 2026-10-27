@@ -5,6 +5,7 @@ import shutil
 from pathlib import Path
 
 STOCK = Path(__file__).resolve().parent / "flutter-configuration" / "stock"
+FLAVORS = STOCK.parent / "flavors"  # written by flutter-configuration/make-flavors.py
 # XCBuildConfiguration ids in the stock project.pbxproj.
 PROJECT_DEBUG, PROJECT_RELEASE = "97C147031CF9000F007C117D", "97C147041CF9000F007C117D"
 TARGET_DEBUG, TARGET_RELEASE = "97C147061CF9000F007C117D", "97C147071CF9000F007C117D"

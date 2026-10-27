@@ -1,0 +1,3 @@
+#include "Generated.xcconfig"
+ASSET_PREFIX=staging
+BUNDLE_DISPLAY_NAME=App Staging
