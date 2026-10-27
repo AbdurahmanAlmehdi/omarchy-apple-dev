@@ -43,6 +43,9 @@ bash tests/flutter-dart-symbols/run.sh || fail=1
 echo "== tests/flutter-configuration/run.sh"
 bash tests/flutter-configuration/run.sh || fail=1
 
+echo "== tests/flutter-assets/run.sh"
+bash tests/flutter-assets/run.sh || fail=1
+
 echo "== tests/ship-root-resources/run.sh"
 bash tests/ship-root-resources/run.sh || fail=1
 

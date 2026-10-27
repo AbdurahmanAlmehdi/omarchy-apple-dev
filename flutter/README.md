@@ -45,6 +45,13 @@ has. `flutter assemble` gets `-dFlavor=<scheme>` and
 `-dConfiguration=<configuration>`, as on a Mac. The Dart entry point is
 `TARGET`, else the configuration's `FLUTTER_TARGET`, else `lib/main.dart`.
 
+The app icon set is the configuration's `ASSETCATALOG_COMPILER_APPICON_NAME`
+(a missing set stops the build; one that lists several sizes gets a warning,
+FINDINGS.md item 68), and the storyboards are the ones the Runner target's
+Copy Bundle Resources phase lists: localized ones in their `X.lproj`, the rest
+at the bundle root. A launch screen `Info.plist` names that is not among them
+stops the build.
+
 `SPLIT_DEBUG_INFO=<dir>` and `DART_OBFUSCATION=true` are `flutter build
 --split-debug-info=<dir>` and `--obfuscate`: they reach `flutter assemble` as
 the same `-dSplitDebugInfo` and `-dDartObfuscation` defines Xcode's build
@@ -147,9 +154,8 @@ laptop (i7-8650U).
   app extensions, entitlements beyond the defaults, simulator builds.
 - `Info.plist` values from an xcconfig ignore conditional settings
   (`KEY[sdk=iphoneos*] = …`); the unconditional value is used.
-- With `FLAVOR`, the icon set is still `AppIcon` and the storyboards still
-  `Base.lproj`'s, whatever the configuration names. A configuration with its
-  own `INFOPLIST_FILE` stops the build. Flavor-scoped assets follow the
+- With `FLAVOR`, a configuration with its own `INFOPLIST_FILE` stops the
+  build, and the icon set must be in `ios/Runner/Assets.xcassets`. Flavor-scoped assets follow the
   scheme's spelling, where a Mac follows `FLAVOR` as typed; `build.sh` warns
   when the two differ.
 - A Flutter upgrade needs `flutter/setup.sh` again: the snapshot format is
