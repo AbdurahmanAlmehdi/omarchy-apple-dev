@@ -11,10 +11,13 @@ Rows (expected results written before the code):
   5  a profile for another app id, or without the certificate -> refused
   6  export options teamID that differs from the profile's team -> refused
   7  key_matches_certificate with real keys (skipped without `cryptography`)
+  8  the key text in ASC_SIGNING_KEY instead of a path -> refused, and the message does not
+     contain it; nothing is installed
 Mutants (each must fail its row; checked by hand when the test was written):
   M1  drop the key check -> row 3
   M2  sign extensions with the app's profile -> row 4
   M3  drop check_named_profile -> row 5
+  M4  read the files with a bare read_bytes() (the traceback carries the value) -> row 8
 """
 import ast
 import base64
@@ -31,7 +34,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 NAMES = {"export_options", "check_signing_certificate", "check_named_profile", "check_profile_team",
-         "key_matches_certificate", "given_identity"}
+         "key_matches_certificate", "read_given_files", "given_identity"}
 CERT = b"GIVEN-CERTIFICATE-DER"
 
 
@@ -134,6 +137,17 @@ class GivenIdentityTests(unittest.TestCase):
     def test_row6_team(self):
         self.plist.write_bytes(plistlib.dumps({"method": "app-store-connect", "teamID": "OTHER12345"}))
         self.refused("OTHER12345", ASC_EXPORT_OPTIONS=str(self.plist))
+
+    def test_row8_key_text_is_not_shown(self):
+        pem = "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC-not-a-real-key\n-----END PRIVATE KEY-----"
+        with self.assertRaises(SystemExit) as e:
+            self.run_given(ASC_SIGNING_KEY=pem)
+        message = str(e.exception.code)
+        self.assertIn("ASC_SIGNING_KEY must be the path of a readable file", message)
+        self.assertIn("the value is not shown", message)
+        self.assertNotIn("BEGIN PRIVATE KEY", message)
+        self.assertNotIn("not-a-real-key", message)
+        self.assertEqual(self.installed, {})
 
 
 class KeyMatchesCertificateTests(unittest.TestCase):

@@ -22,6 +22,8 @@
 # ASC_PROFILE signs with an identity and profile made elsewhere instead (for a
 # build machine that must not hold the API key or create certificates):
 #   ASC_SIGNING_KEY=key.pem  ASC_SIGNING_CERT=cert.der  ASC_PROFILE=app.mobileprovision
+# Each is a file path: ASC_SIGNING_KEY is the path of the PEM private key file,
+# not the key text.
 # No App Store Connect call is made then, unless --upload is given.
 set -euo pipefail
 

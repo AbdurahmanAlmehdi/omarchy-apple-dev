@@ -7,8 +7,8 @@ API key: ASC_KEY_ID, ASC_ISSUER_ID, and ASC_KEY_PATH (default
 ~/.appstoreconnect/AuthKey_<ASC_KEY_ID>.p8). The key needs the App Manager role
 with access to Certificates, Identifiers & Profiles, or Admin.
 ASC_EXPORT_OPTIONS: an Xcode ExportOptions.plist for `identity` (see export_options()).
-`given-identity` needs no API key: ASC_SIGNING_KEY, ASC_SIGNING_CERT and ASC_PROFILE (see
-given_identity()).
+`given-identity` needs no API key: ASC_SIGNING_KEY (the path of the PEM private key file),
+ASC_SIGNING_CERT and ASC_PROFILE (see given_identity()).
 """
 import base64
 import datetime
@@ -556,10 +556,23 @@ def key_matches_certificate(key_pem, cert_der):
     return key.public_key().public_bytes(*public) == cert.public_key().public_bytes(*public)
 
 
+def read_given_files(names):
+    """The contents of the files the variables name. A read error stops without the value: the key
+    text put in ASC_SIGNING_KEY instead of its path would otherwise be printed with the traceback."""
+    contents = {}
+    for name in names:
+        try:
+            contents[name] = Path(os.environ[name]).read_bytes()
+        except OSError as e:
+            die(f"{name} must be the path of a readable file ({e.strerror}); the value is not shown")
+    return contents
+
+
 def given_identity(app_dir, out_dir):
     """Sign with an Apple Distribution identity and an App Store profile made elsewhere, for example
-    by a release server that keeps the API key: ASC_SIGNING_KEY (the PEM private key),
-    ASC_SIGNING_CERT (its certificate, DER) and ASC_PROFILE (the app's App Store profile). No App
+    by a release server that keeps the API key: ASC_SIGNING_KEY (the path of the PEM private key
+    file), ASC_SIGNING_CERT (the path of its certificate, DER) and ASC_PROFILE (the path of the
+    app's App Store profile). No App
     Store Connect call is made and no certificate is created. The profile must be for the app's
     bundle id, in the export options' team, and list the certificate; the key must be the
     certificate's. An app with extensions needs a profile per bundle, so it is refused."""
@@ -569,16 +582,17 @@ def given_identity(app_dir, out_dir):
     if missing:
         die(f"given-identity needs {', '.join(missing)}")
     key_path, cert_path, prov_path = (Path(os.environ[name]) for name in names)
-    cert_der = cert_path.read_bytes()
+    contents = read_given_files(names)
+    cert_der = contents["ASC_SIGNING_CERT"]
     check_signing_certificate(opts.get("certificate"), cert_der)
-    if not key_matches_certificate(key_path.read_bytes(), cert_der):
+    if not key_matches_certificate(contents["ASC_SIGNING_KEY"], cert_der):
         die("ASC_SIGNING_KEY is not the private key of ASC_SIGNING_CERT")
     found = bundles(app_dir)
     if len(found) > 1:
         die(f"given-identity signs the app only; {', '.join(i for _, i in found[1:])} would need "
             "a profile of its own")
     ident = found[0][1]
-    prov = prov_path.read_bytes()
+    prov = contents["ASC_PROFILE"]
     payload = profile_payload(prov)
     check_named_profile(payload, prov_path.name, ident, cert_der)
     check_profile_team(payload, opts.get("team"), ident)
