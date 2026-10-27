@@ -94,6 +94,12 @@ App Store Connect build-upload API. It needs the same `ASC_KEY_ID`,
 created once in App Store Connect; without `ASC_KEY_ID` it signs with the
 TEST identity, which Apple rejects. `ASC_ENTITLEMENTS_PATH` requests push,
 Sign in with Apple and Associated Domains as for `ship.sh`.
+`ASC_SIGNING_KEY` (the path of the PEM private key file), `ASC_SIGNING_CERT`
+(the path of its certificate, DER) and `ASC_PROFILE` (the path of the App Store
+profile) sign with an identity and profile made elsewhere instead (`asc.py
+given-identity`), for a build machine that must not hold the API key or create
+certificates: no App Store Connect call is made, and an app with extensions is
+refused. A value that is not a readable file stops signing without printing it.
 `tests/flutter-ship/run.sh` checks the steps with stubbed tools.
 
 A clean build of the stock template with four plugins takes 47 s on a 2018

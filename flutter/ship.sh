@@ -18,6 +18,13 @@
 # pubspec.yaml or its own BUILD_NUMBER). ASC_ENTITLEMENTS_PATH requests
 # capabilities as for ship.sh. XCODE_VERSION/XCODE_BUILD stamp DTXcode when the
 # SDK has no recorded version (install-toolchain.sh records it from the .xip).
+#
+# ASC_PROFILE signs with an identity and profile made elsewhere instead (for a
+# build machine that must not hold the API key or create certificates):
+#   ASC_SIGNING_KEY=key.pem  ASC_SIGNING_CERT=cert.der  ASC_PROFILE=app.mobileprovision
+# Each is a file path: ASC_SIGNING_KEY is the path of the PEM private key file,
+# not the key text.
+# No App Store Connect call is made then, unless --upload is given.
 set -euo pipefail
 
 here=$(dirname "$(readlink -f "$0")")
@@ -39,7 +46,8 @@ if [ "$upload" = 1 ]; then
   : "${ASC_KEY_PATH:?--upload needs ASC_KEY_PATH (the .p8 file)}"
   export ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_PATH
 fi
-[ -n "${ASC_KEY_ID:-}" ] || echo "warning: no ASC_KEY_ID: signing with the TEST identity (Apple rejects it)" >&2
+[ -n "${ASC_KEY_ID:-}${ASC_PROFILE:-}" ] ||
+  echo "warning: no ASC_KEY_ID or ASC_PROFILE: signing with the TEST identity (Apple rejects it)" >&2
 
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
@@ -59,7 +67,9 @@ echo "== 2. SwiftPM dylibs as frameworks =="
 
 echo "== 3. Distribution identity and signature =="
 sign_dir=$out/ship-signing
-if [ -n "${ASC_KEY_ID:-}" ]; then
+if [ -n "${ASC_PROFILE:-}" ]; then
+  "$PY" "$ASC" given-identity "$bundle" "$sign_dir"
+elif [ -n "${ASC_KEY_ID:-}" ]; then
   "$PY" "$ASC" identity "$bundle" "$sign_dir"
 else
   "$PY" "$ASC" test-identity "$bundle" "$sign_dir"

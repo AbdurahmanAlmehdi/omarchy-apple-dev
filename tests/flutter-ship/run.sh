@@ -19,11 +19,14 @@
 #   6  read-only: a read-only built bundle (SwiftPM outputs are) still signs
 #   7  bad team:  an entitlements team id that is not 10 characters stops
 #     before rcodesign runs
+#   8  given:     ASC_PROFILE (with ASC_KEY_ID set too) -> given-identity, not
+#     identity or test-identity, and no TEST-identity warning
 # Mutants (each must fail its row; checked by hand when the test was written):
 #   M1  sign the app before the frameworks -> row 1 (order)
 #   M2  sign $built instead of the staged copy -> row 1 (built bundle changed)
 #   M3  drop the chmod -R u+w line -> row 6
 #   M4  drop the team-id regex check -> row 7
+#   M5  test ASC_KEY_ID before ASC_PROFILE -> row 8
 # usage: run.sh [path-to-flutter/ship.sh]   default: ../../flutter/ship.sh
 set -uo pipefail
 here=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
@@ -47,7 +50,7 @@ case "$tool" in
   asc.py)
     echo "asc $1 $(basename "$2")${3:+ $(basename "$3")}" >>"$STUB_LOG"
     case "$1" in
-      identity|test-identity)
+      identity|given-identity|test-identity)
         mkdir -p "$3"
         python3 - "$3/entitlements.plist" "${STUB_TEAM:-TEAM000000}" <<'PY'
 import plistlib, sys
@@ -97,7 +100,7 @@ drive() {
   while [ "$1" != "--" ]; do envargs+=("$1"); shift; done
   shift
   : >"$log"
-  env -u ASC_KEY_ID -u ASC_ISSUER_ID -u ASC_KEY_PATH -u BUILD_NUMBER \
+  env -u ASC_KEY_ID -u ASC_ISSUER_ID -u ASC_KEY_PATH -u ASC_PROFILE -u BUILD_NUMBER \
     HOME="$home" STUB_LOG="$log" "${envargs[@]}" bash "$SHIP" "$@"
 }
 
@@ -163,5 +166,13 @@ mkapp "$tmp/r7"
 if drive "$tmp/r7.log" STUB_TEAM="Apple Distribution: X" -- "$tmp/r7" >/dev/null 2>&1; then
   bad "row 7 bad team id accepted"
 elif grep -q '^rcodesign' "$tmp/r7.log"; then bad "row 7 signed with a bad team id"; else ok "row 7 bad team id stops"; fi
+
+# Row 8
+mkapp "$tmp/r8"
+if drive "$tmp/r8.log" ASC_KEY_ID=KEY1234567 ASC_PROFILE=/dev/null -- "$tmp/r8" >"$tmp/r8.out" 2>&1 &&
+   grep -qx 'asc given-identity Runner.app ship-signing' "$tmp/r8.log" &&
+   ! grep -q '^asc identity\|test-identity' "$tmp/r8.log" &&
+   ! grep -q 'TEST identity' "$tmp/r8.out"; then ok "row 8 given identity"; else
+  bad "row 8 given identity"; sed 's/^/  /' "$tmp/r8.log" "$tmp/r8.out"; fi
 
 exit "$fail"
