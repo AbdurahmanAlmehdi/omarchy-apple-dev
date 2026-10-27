@@ -339,13 +339,14 @@ class Generator:
 
     # -- settings ---------------------------------------------------------
 
-    def config_settings(self, cfg_list_id):
-        """Settings layers for a configuration list, xcconfig first, pbxproj last."""
+    def config_layers(self, cfg_list_id, config="Release"):
+        """One configuration of a configuration list: its xcconfig's path
+        relative to the project dir (when it has one), then its pbxproj settings."""
         layers = []
         cl = self.objs.get(cfg_list_id)
         for cfg_id in (cl or {}).get("buildConfigurations", []):
             cfg = self.objs[cfg_id]
-            if cfg.get("name") != "Release":
+            if cfg.get("name") != config:
                 continue
             base = cfg.get("baseConfigurationReference")
             anchor = cfg.get("baseConfigurationReferenceAnchor")
@@ -357,8 +358,12 @@ class Generator:
                 layers.append(os.path.join(self.objs[anchor].get("path", ""), rel))
             layers.append(cfg.get("buildSettings", {}))
             break
+        return [l for l in layers if l]
+
+    def config_settings(self, cfg_list_id):
+        """Settings layers for a configuration list, xcconfig first, pbxproj last."""
         return [load_xcconfig(os.path.join(self.proj_dir, l)) if isinstance(l, str) else l
-                for l in layers if l]
+                for l in self.config_layers(cfg_list_id)]
 
     def target_merged(self, target):
         """Release settings: project xcconfig < project < target xcconfig < target."""

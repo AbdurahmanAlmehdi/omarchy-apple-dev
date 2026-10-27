@@ -43,9 +43,9 @@ done
 file -b "$flutter_root/bin/cache/artifacts/engine/ios-release/gen_snapshot_arm64" 2>/dev/null | grep -q ELF ||
   { echo "Flutter's iOS gen_snapshot is not the Linux build; run $here/setup.sh" >&2; exit 1; }
 
-pbx=$app/ios/Runner.xcodeproj/project.pbxproj
-setting() { # first value of a build setting that is not the test target's
-  grep -E "^\s*$1 = " "$pbx" | grep -v RunnerTests | head -n1 | sed -E 's/.* = "?([^";]*)"?;.*/\1/'
+configuration=Release
+setting() { # a build setting of the Runner target in $configuration, expanded as Xcode does
+  python3 "$here/tools/xcode_settings.py" "$app/ios" "$configuration" "$1"
 }
 BUNDLE_ID=${BUNDLE_ID:-$(setting PRODUCT_BUNDLE_IDENTIFIER)}
 MIN_IOS=${MIN_IOS:-$(setting IPHONEOS_DEPLOYMENT_TARGET)}
@@ -134,7 +134,7 @@ done
 "$ibtool" --module Runner --target-device iphone --target-device ipad \
   --link "$bundle/Base.lproj" "$stage"/sbc/*.storyboardc 2>"$out/ibtool.log" || { cat "$out/ibtool.log" >&2; exit 1; }
 python3 "$here/tools/gen-info-plist.py" "$app/ios/Runner/Info.plist" "$stage/icon.plist" "$bundle/Info.plist" \
-  "$BUNDLE_ID" "$BUILD_NAME" "$BUILD_NUMBER" "$MIN_IOS" "$ios_sdk" "$families"
+  "$BUNDLE_ID" "$BUILD_NAME" "$BUILD_NUMBER" "$MIN_IOS" "$ios_sdk" "$families" "$configuration"
 
 echo "== 4. Assemble"
 cp "$products/Runner" "$bundle/Runner"
